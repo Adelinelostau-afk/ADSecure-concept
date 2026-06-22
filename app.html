@@ -118,7 +118,8 @@ button{font-family:var(--body);}
 #sidebar-toggle:hover{background:rgba(255,255,255,0.12);color:var(--sand);}
 
 /* ══ MAIN ═════════════════════════════════════════════════════════════════ */
-#main{margin-left:var(--sidebar-w);min-height:100vh;transition:margin-left 0.25s ease;}
+#main{margin-left:240px;min-height:100vh;transition:margin-left 0.25s ease;}
+@media(min-width:769px) and (max-width:1100px){#main{margin-left:200px!important;}#sidebar{width:200px!important;}}
 
 /* ══ TOPBAR ═══════════════════════════════════════════════════════════════ */
 #topbar{
@@ -2240,27 +2241,22 @@ function toggleSidebar(){
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function initSidebar(){
-  // Forcer la sidebar ouverte avec les bons styles au chargement
-  const sb=document.getElementById("sidebar");
-  const main=document.getElementById("main");
-  const labels=document.querySelectorAll(".sidebar-label");
+  if(window.innerWidth<=768) return;
+  sidebarOpen=true;
+  const w=getSidebarW();
+  document.getElementById("sidebar").style.width=w+"px";
+  document.getElementById("main").style.marginLeft=w+"px";
+  document.querySelectorAll(".sidebar-label").forEach(l=>{l.style.opacity="1";l.style.maxWidth="200px";});
   const appName=document.getElementById("app-name");
   const appSub=document.getElementById("app-sub");
   const div=document.getElementById("sidebar-divider");
   const logo=document.getElementById("logo-placeholder")||document.getElementById("logo-img");
-  const sidebarBottom=document.getElementById("sidebar-bottom");
-  sidebarOpen=true;
-  if(window.innerWidth>768){
-    const w=getSidebarW()+"px";
-    sb.style.width=w;
-    main.style.marginLeft=w;
-    labels.forEach(l=>{l.style.opacity="1";l.style.maxWidth="200px";});
-    if(appName){appName.style.opacity="1";appName.style.maxHeight="40px";}
-    if(appSub){appSub.style.opacity="1";appSub.style.maxHeight="30px";}
-    if(div)div.style.opacity="1";
-    if(logo){logo.style.opacity="1";logo.style.maxHeight="70px";}
-    if(sidebarBottom)sidebarBottom.style.opacity="1";
-  }
+  const bot=document.getElementById("sidebar-bottom");
+  if(appName){appName.style.opacity="1";appName.style.maxHeight="40px";}
+  if(appSub){appSub.style.opacity="1";appSub.style.maxHeight="30px";}
+  if(div)div.style.opacity="1";
+  if(logo){logo.style.opacity="1";logo.style.maxHeight="70px";}
+  if(bot)bot.style.opacity="1";
 }
 
 if(checkLogin()){
