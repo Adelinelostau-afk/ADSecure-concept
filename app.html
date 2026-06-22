@@ -492,6 +492,8 @@ input[type=color]{width:44px;height:34px;padding:2px;cursor:pointer;border-radiu
   #sidebar-overlay{display:none!important;}
   #sidebar{width:200px!important;transform:none!important;}
   #main{margin-left:200px!important;}
+  #sidebar-toggle{display:none!important;}
+  .two-col{grid-template-columns:1fr!important;}
 }
 
 /* Desktop large */
@@ -2258,6 +2260,28 @@ function initSidebar(){
   if(logo){logo.style.opacity="1";logo.style.maxHeight="70px";}
   if(bot)bot.style.opacity="1";
 }
+
+window.addEventListener("resize",()=>{
+  if(window.innerWidth>768&&isLoggedIn){
+    sidebarOpen=true;
+    const w=getSidebarW();
+    const sb=document.getElementById("sidebar");
+    const main=document.getElementById("main");
+    if(sb)sb.style.width=w+"px";
+    if(main)main.style.marginLeft=w+"px";
+    document.querySelectorAll(".sidebar-label").forEach(l=>{l.style.opacity="1";l.style.maxWidth="200px";});
+    const appName=document.getElementById("app-name");
+    const appSub=document.getElementById("app-sub");
+    const div=document.getElementById("sidebar-divider");
+    const logo=document.getElementById("logo-placeholder")||document.getElementById("logo-img");
+    const bot=document.getElementById("sidebar-bottom");
+    if(appName){appName.style.opacity="1";appName.style.maxHeight="40px";}
+    if(appSub){appSub.style.opacity="1";appSub.style.maxHeight="30px";}
+    if(div)div.style.opacity="1";
+    if(logo){logo.style.opacity="1";logo.style.maxHeight="70px";}
+    if(bot)bot.style.opacity="1";
+  }
+});
 
 if(checkLogin()){
   document.getElementById("login-screen").style.display="none";
