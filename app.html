@@ -1,0 +1,85 @@
+[HTML OMITTED FOR BREVITY] 
+
+// Afficher la liste des sauvegardes
+async function listBackups(){
+  try {
+    if(!currentUser || !currentUser.tenant_id) return [];
+    const { data:backups, error } = await sbClient
+      .from('app_backups')
+      .select('id,created_at,label')
+      .eq('tenant_id', currentUser.tenant_id)
+      .order('created_at', { ascending:false });
+    if(error) throw error;
+    return backups;
+  } catch(e){
+    showError(e);
+    return [];
+  }
+}
+
+// Créer une nouvelle sauvegarde (manuelle ou auto)
+async function createBackup(label, force){
+  try {
+    if(!currentUser || !currentUser.tenant_id) return false;
+    // Éviter les doublons le même jour sauf appel forcé (manuelle)
+    if(!force) {
+      const existing = await listBackups();
+      if(existing?.length) {
+        const lastDay = (existing[0].created_at || "").split("T")[0];
+        if(lastDay === getToday()) return false; // déjà une sauvegarde aujourd'hui  
+      }
+    }
+    const { error } = await sbClient
+      .from('app_backups')
+      .insert({ 
+        tenant_id:currentUser.tenant_id,
+        data:getDataObject(),
+        label:label || (force ? "Manuelle" : "Automatique")
+      })
+      .select()
+      .single();
+    if(error) throw error;  
+    // Purge : ne garder que les BACKUP_KEEP plus récentes
+    await purgeOldBackups();
+    return true;
+  } catch(e){
+    showError(e);
+    return false;  
+  }
+}
+
+// Purger les vieilles sauvegardes
+async function purgeOldBackups(){  
+  try {
+    const all = await listBackups();
+    if(all.length <= BACKUP_KEEP) return; // rien à purger
+    const toDelete = all.slice(BACKUP_KEEP); // les plus anciennes
+    const ids = toDelete.map(b => b.id);
+    if(!ids.length) return;
+    const { error } = await sbClient
+      .from('app_backups')  
+      .delete()
+      .in('id', ids);
+    if(error) throw error;
+  } catch(e){
+    showError(e);
+  }
+}
+
+// Récupère le contenu complet d'une sauvegarde
+async function fetchBackupData(id){
+  try {
+    const { data, error } = await sbClient
+      .from('app_backups')
+      .select('data')
+      .eq('id', id)
+      .single();
+    if(error) throw error;  
+    return data?.data || null;
+  } catch(e){
+    showError(e);  
+    return null;
+  }
+}
+
+[HTML OMITTED FOR BREVITY]
