@@ -1022,7 +1022,10 @@ function prochainNumero(prefixe,liste){
 }
 // Date d'émission d'une facture (anciennes factures sans date : estimée à 30 jours avant l'échéance)
 function facDate(f){ return f.date||(f.ech?addDays(f.ech,-30):""); }
-function facTauxTVA(f){ return (f.tva!==undefined&&f.tva!==null)?f.tva:20; }
+// Taux de TVA par défaut des ventes (Martinique : 8,5 %)
+const TVA_DEFAUT=8.5;
+function fTaux(t){ return String(Number(t)||0).replace(".",",")+" %"; }
+function facTauxTVA(f){ return (f.tva!==undefined&&f.tva!==null)?f.tva:TVA_DEFAUT; }
 function facHT(f){
   if(f.lignes&&f.lignes.length) return f.lignes.reduce((s,l)=>s+(l.qte||0)*(l.pu||0),0);
   return Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100))); // rétrocompat : déduit le HT du TTC
@@ -2532,7 +2535,7 @@ function ffUpdTotal(){
   const ttc=ht*(1+tva/100);
   box.innerHTML=`<div style="background:${TH.bg};border-radius:10px;padding:12px 15px">
     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:${TH.txt}99">Total HT</span><span style="font-weight:700">${fMoney(ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:${TH.txt}99">TVA ${tva}%</span><span style="font-weight:700">${fMoney(ttc-ht)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:${TH.txt}99">TVA ${fTaux(tva)}</span><span style="font-weight:700">${fMoney(ttc-ht)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:6px;border-top:1px solid ${TH.txt}22"><span style="font-weight:700">Total TTC</span><span style="font-weight:800;color:${TH.c1}">${fMoney(ttc)}</span></div>
   </div>`;
 }
@@ -3961,7 +3964,7 @@ function renderDashboard(){ return renderDashboardModulable(); }
 
 
 function modalFacture(id){
-  const f=id?FACTURES.find(x=>x.id===id):{id:"",num:prochainNumero("FAC",FACTURES),date:TODAY,client:"",clientId:"",ech:addDays(TODAY,30),statut:"brouillon",tva:20,refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
+  const f=id?FACTURES.find(x=>x.id===id):{id:"",num:prochainNumero("FAC",FACTURES),date:TODAY,client:"",clientId:"",ech:addDays(TODAY,30),statut:"brouillon",tva:TVA_DEFAUT,refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
   // Rétrocompat : ancienne facture sans lignes → on en crée une à partir du ttc
   let lignesInit=(f.lignes&&f.lignes.length)?f.lignes:[{desc:"Prestation",qte:1,pu:Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100)))}];
   window._facLignes=JSON.parse(JSON.stringify(lignesInit));
@@ -4051,7 +4054,7 @@ function updateFacTotaux(){
   const cout=window._facLignes.reduce((s,l)=>s+(l.qte||0)*(l.pa||0),0);
   const mtva=ht*tva/100;
   box.innerHTML=`${cout>0?ligneMarge(ht,cout):""}<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:#64748b">Total HT</span><span style="font-weight:600">${fMoney(ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${tva}%</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${fTaux(tva)}</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:6px;border-top:1px solid #ddd"><span style="font-weight:700;color:${TH.txt}">Total TTC</span><span style="font-weight:800;color:${TH.c1}">${fMoney(ht+mtva)}</span></div>`;
 }
 function renderFacCataloguePicker(filter){
@@ -4181,7 +4184,7 @@ function factureDocHTML(f,impression){
     <div class="totaux">
       <table>
         <tr><td>Total HT</td><td style="text-align:right">${fMoney(ht)}</td></tr>
-        <tr><td>TVA ${tauxTva}%</td><td style="text-align:right">${fMoney(tva)}</td></tr>
+        <tr><td>TVA ${fTaux(tauxTva)}</td><td style="text-align:right">${fMoney(tva)}</td></tr>
         <tr class="ttc"><td>TOTAL TTC</td><td style="text-align:right">${fMoney(ttc)}</td></tr>
       </table>
     </div>
@@ -4577,7 +4580,7 @@ function toggleChantierField(prefix){
   wrap.style.display=clientEstPro(sel.value)?"block":"none";
 }
 function modalDevis(id){
-  const d=id?DEVIS.find(x=>x.id===id):{id:"",clientId:selectedClientId||"",num:prochainNumero("DEV",DEVIS),date:TODAY,validite:addDays(TODAY,30),statut:"brouillon",tva:20,notes:"",refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
+  const d=id?DEVIS.find(x=>x.id===id):{id:"",clientId:selectedClientId||"",num:prochainNumero("DEV",DEVIS),date:TODAY,validite:addDays(TODAY,30),statut:"brouillon",tva:TVA_DEFAUT,notes:"",refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
   window._devisLignes=JSON.parse(JSON.stringify(d.lignes&&d.lignes.length?d.lignes:[{desc:"",qte:1,pu:0}]));
   showModal(id?"Modifier le devis":"Nouveau devis",`
     <div class="field-row">
@@ -4995,7 +4998,7 @@ function updateDevisTotaux(){
   const cout=window._devisLignes.reduce((s,l)=>s+(l.qte||0)*(l.pa||0),0);
   const mtva=ht*tva/100;
   box.innerHTML=`${cout>0?ligneMarge(ht,cout):""}<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:#64748b">Total HT</span><span style="font-weight:600">${fMoney(ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${tva}%</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${fTaux(tva)}</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:6px;border-top:1px solid #ddd"><span style="font-weight:700;color:${TH.txt}">Total TTC</span><span style="font-weight:800;color:${TH.c1}">${fMoney(ht+mtva)}</span></div>`;
 }
 function saveDevis(id){
@@ -5031,7 +5034,7 @@ function devisVersFacture(id){
     clientId:d.clientId,
     ech:addDays(TODAY,30),
     statut:"envoyee",
-    tva:(d.tva!==undefined&&d.tva!==null)?d.tva:20,
+    tva:(d.tva!==undefined&&d.tva!==null)?d.tva:TVA_DEFAUT,
     lignes:JSON.parse(JSON.stringify(d.lignes||[])),  // reprend TOUTES les lignes du devis
     ttc:Math.round(devisTTC(d))
   });
@@ -5048,7 +5051,7 @@ function nextBccRef(){
 }
 function modalBCC(id){
   const src=id?BCCLIENTS.find(x=>x.id===id):null;
-  const b=src||{num:nextBccRef(),clientId:CLIENTS[0]?.id||"",devisNum:"",refChantier:"",date:TODAY,statut:"en_cours",tva:20,lignes:[{ref:"",desc:"",det:"",unite:"unité",qte:1,pu:0,pa:0}],notes:""};
+  const b=src||{num:nextBccRef(),clientId:CLIENTS[0]?.id||"",devisNum:"",refChantier:"",date:TODAY,statut:"en_cours",tva:TVA_DEFAUT,lignes:[{ref:"",desc:"",det:"",unite:"unité",qte:1,pu:0,pa:0}],notes:""};
   window._bccLignes=JSON.parse(JSON.stringify(b.lignes&&b.lignes.length?b.lignes:[{ref:"",desc:"",det:"",unite:"unité",qte:1,pu:0,pa:0}]));
   showModal(id?`Bon de commande — ${b.num}`:"Nouveau bon de commande",`
     <div class="field-row">
@@ -5065,7 +5068,7 @@ function modalBCC(id){
       <div class="field"><label>Statut</label><select id="bcc-statut">
         ${Object.entries(ST_BCC).map(([k,v])=>`<option value="${k}"${b.statut===k?" selected":""}>${v[2]}</option>`).join("")}
       </select></div>
-      <div class="field"><label>TVA (%)</label><input type="number" id="bcc-tva" value="${(b.tva!==undefined&&b.tva!==null)?b.tva:20}" oninput="updateBccTotaux()"/></div>
+      <div class="field"><label>TVA (%)</label><input type="number" id="bcc-tva" value="${(b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT}" oninput="updateBccTotaux()"/></div>
     </div>
     <div class="field">
       <label>Ajout rapide depuis le catalogue <span id="bcc-cat-picker-cpt" style="font-weight:600;color:#94a3b8"></span></label>
@@ -5154,7 +5157,7 @@ function updateBccTotaux(){
   const cout=window._bccLignes.reduce((s,l)=>s+(l.qte||0)*(l.pa||0),0);
   const mtva=ht*tva/100;
   box.innerHTML=`${cout>0?ligneMarge(ht,cout):""}<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:#64748b">Total HT</span><span style="font-weight:600">${fMoney(ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${tva}%</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:#64748b">TVA ${fTaux(tva)}</span><span style="font-weight:600">${fMoney(mtva)}</span></div>
     <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:6px;border-top:1px solid #ddd"><span style="font-weight:700;color:${TH.txt}">Total TTC</span><span style="font-weight:800;color:${TH.c1}">${fMoney(ht+mtva)}</span></div>`;
 }
 function saveBCC(id){
@@ -5191,7 +5194,7 @@ function devisVersBC(id){
     refChantier:d.refChantier||"",
     date:TODAY,
     statut:"en_cours",
-    tva:(d.tva!==undefined&&d.tva!==null)?d.tva:20,
+    tva:(d.tva!==undefined&&d.tva!==null)?d.tva:TVA_DEFAUT,
     lignes:JSON.parse(JSON.stringify(d.lignes||[]))
   });
   DEVIS=DEVIS.map(x=>x.id===id?{...x,statut:"transforme",bccNum:num}:x);
@@ -5220,7 +5223,7 @@ function bccVersFacture(id){
     refChantier:b.refChantier||"",
     ech:addDays(TODAY,30),
     statut:"envoyee",
-    tva:(b.tva!==undefined&&b.tva!==null)?b.tva:20,
+    tva:(b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT,
     lignes:JSON.parse(JSON.stringify(b.lignes||[])),
     paiements:JSON.parse(JSON.stringify(b.paiements||[])),  // reprend les règlements du BC
     ttc:Math.round(devisTTC(b))
@@ -5365,7 +5368,7 @@ function genererBCClientPDF(id){
     <div class="totaux">
       <table>
         <tr><td>Total HT</td><td style="text-align:right">${fMoney(ht)}</td></tr>
-        <tr><td>TVA ${(b.tva!==undefined&&b.tva!==null)?b.tva:20}%</td><td style="text-align:right">${fMoney(mtva)}</td></tr>
+        <tr><td>TVA ${fTaux((b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT)}</td><td style="text-align:right">${fMoney(mtva)}</td></tr>
         <tr class="ttc"><td>TOTAL TTC</td><td style="text-align:right">${fMoney(ttc)}</td></tr>
       </table>
     </div>
@@ -5476,7 +5479,7 @@ function devisDocHTML(d,impression){
     <div class="totaux">
       <table>
         <tr><td>Total HT</td><td style="text-align:right">${fMoney(ht)}</td></tr>
-        <tr><td>TVA ${d.tva}%</td><td style="text-align:right">${fMoney(mtva)}</td></tr>
+        <tr><td>TVA ${fTaux(d.tva||0)}</td><td style="text-align:right">${fMoney(mtva)}</td></tr>
         <tr class="ttc"><td>TOTAL TTC</td><td style="text-align:right">${fMoney(ttc)}</td></tr>
       </table>
     </div>
