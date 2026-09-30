@@ -3126,7 +3126,7 @@ const RelancesCore=(function(){
   function shiftMonths(d,n){if(!d)return"";const x=new Date(d+"T12:00:00");const j=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+n);const dern=new Date(x.getFullYear(),x.getMonth()+1,0,12).getDate();x.setDate(Math.min(j,dern));return ymd(x);}
   function addMonths(d,n){if(!d)return"";const x=new Date(d+"T12:00:00");const j=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+n);const dern=new Date(x.getFullYear(),x.getMonth()+1,0,12).getDate();if(j>dern){x.setDate(dern);}else{x.setDate(j);x.setDate(x.getDate()-1);}return ymd(x);}
   const MOIS=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
-  function dateLongue(d){if(!d)return"—";const [y,m,j]=d.split("-").map(Number);return j+" "+MOIS[m-1]+" "+y;}
+  function dateLongue(d){if(!d)return"—";const [y,m,j]=d.split("-").map(Number);return (j===1?"1er":j)+" "+MOIS[m-1]+" "+y;}
   function euros(n){const v=Math.round(Number(n||0)*100)/100;const [e,c]=v.toFixed(2).split(".");return e.replace(/\B(?=(\d{3})+(?!\d))/g," ")+(c==="00"?"":","+c)+" €";}
 
   // ── Factures ──
@@ -4496,6 +4496,7 @@ function renderDevis(){
               <td><span class="badge" style="background:${bg};color:${col}">${lbl}</span></td>
               <td><div style="display:flex;gap:5px">
                 <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" title="PDF" style="border-color:#86efac;background:#f0fdf4;color:#15803d">📄</button>
+                <button class="btn-sm" onclick="modalEnvoiDevis('${d.id}')" title="Envoyer par e-mail${(d.envois||[]).length?" (déjà envoyé le "+fDate(d.envois[d.envois.length-1].date)+")":""}" style="border-color:#bae6fd;background:#f0f9ff;color:#0369a1">✉️${(d.envois||[]).length?"✓":""}</button>
                 <button class="btn-sm btn-edit" onclick="modalDevis('${d.id}')">✏️</button>
                 ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersBC('${d.id}')" title="Passer en bon de commande" style="border-color:#fde68a;background:#fffbeb;color:#b45309">📋</button>`:""}
                 ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersFacture('${d.id}')" title="Convertir en facture" style="border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8">🧾</button>`:""}
@@ -5379,13 +5380,13 @@ function genererBCClientPDF(id){
   logDocument("bcc",b.id,b.num,cli?cli.nom:"",devisTTC(b));
 }
 
-function genererDevisPDF(id){
-  const d=DEVIS.find(x=>x.id===id);if(!d){alert("Devis introuvable");return;}
+// HTML complet du devis (impression ou conversion en PDF pour l'envoi par e-mail)
+function devisDocHTML(d,impression){
   const cli=CLIENTS.find(c=>c.id===d.clientId);
   const ht=devisHT(d),mtva=devisTVA(d),ttc=devisTTC(d);
   const logoSrc=thLogo();
   const[,,statutLbl]=ST_DEVIS[d.statut]||ST_DEVIS.brouillon;
-  const doc=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>${d.num}</title>
+  const doc=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><base href="${location.href}"/><title>${d.num}</title>
   <style>
     @page{size:A4;margin:0}
     *{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -5469,14 +5470,150 @@ function genererDevisPDF(id){
       ${TH.nom} ${TH.sous}${TH.siret?" · SIRET : "+TH.siret:""} · Ce devis ne vaut engagement qu'après acceptation signée.<br/>
       ${TH.mentionsLegales||""}
     </div>
-    <script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>
+    ${impression?`<script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>`:""}
   </body></html>`;
+  return doc;
+}
+function genererDevisPDF(id){
+  const d=DEVIS.find(x=>x.id===id);if(!d){alert("Devis introuvable");return;}
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  const doc=devisDocHTML(d,true);
   const w=window.open("","_blank");
   if(!w){alert("Veuillez autoriser les fenêtres pop-up pour générer le PDF.");return;}
   w.document.write(doc);w.document.close();
   logActivity("Génération devis",`PDF : ${d.num}`);
   logDocument("devis",d.id,d.num,cli?cli.nom:"",devisTTC(d));
 }
+
+// ══════════════════════════════════════════════════════════
+// ── ENVOI DES DEVIS PAR E-MAIL (PDF en pièce jointe) ─────
+// ══════════════════════════════════════════════════════════
+// Le PDF est fabriqué dans l'appli (html2canvas + jsPDF), puis la fonction Supabase
+// « relances-auto » (action "email") l'envoie depuis l'adresse professionnelle.
+const PDF_LIBS=[
+  "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+];
+let pdfLibsPromise=null;
+function chargerLibsPDF(){
+  if(pdfLibsPromise) return pdfLibsPromise;
+  pdfLibsPromise=PDF_LIBS.reduce((p,src)=>p.then(()=>new Promise((ok,ko)=>{
+    const sc=document.createElement("script"); sc.src=src; sc.onload=ok;
+    sc.onerror=()=>{pdfLibsPromise=null;ko(new Error("Chargement de l'outil PDF impossible (connexion internet ?)"));};
+    document.head.appendChild(sc);
+  })),Promise.resolve());
+  return pdfLibsPromise;
+}
+// Convertit un document HTML A4 en PDF (base64, sans en-tête data:)
+async function htmlVersPdfBase64(html){
+  await chargerLibsPDF();
+  const LARG=794, HAUT=1123; // A4 à 96 dpi
+  const ifr=document.createElement("iframe");
+  ifr.style.cssText=`position:fixed;left:-10000px;top:0;width:${LARG}px;height:${HAUT}px;border:0;visibility:hidden`;
+  document.body.appendChild(ifr);
+  try{
+    await new Promise(ok=>{ ifr.onload=ok; ifr.srcdoc=html; });
+    const doc=ifr.contentDocument;
+    await Promise.all([...doc.images].map(im=>im.complete?null:new Promise(ok=>{im.onload=im.onerror=ok;})));
+    if(doc.fonts&&doc.fonts.ready) await doc.fonts.ready;
+    const hauteur=Math.max(doc.documentElement.scrollHeight,doc.body.scrollHeight);
+    ifr.style.height=hauteur+"px";
+    const canvas=await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur});
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
+    const pxParPage=Math.floor(canvas.width*HAUT/LARG);
+    const nbPages=Math.max(1,Math.ceil((canvas.height-8)/pxParPage));
+    for(let i=0;i<nbPages;i++){
+      const h=Math.min(pxParPage,canvas.height-i*pxParPage);
+      const part=document.createElement("canvas"); part.width=canvas.width; part.height=h;
+      const ctx=part.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,part.width,h);
+      ctx.drawImage(canvas,0,i*pxParPage,canvas.width,h,0,0,canvas.width,h);
+      if(i>0) pdf.addPage();
+      pdf.addImage(part.toDataURL("image/jpeg",0.9),"JPEG",0,0,210,210*h/canvas.width);
+    }
+    return pdf.output("datauristring").split(",")[1];
+  }finally{ ifr.remove(); }
+}
+
+const MODELE_MAIL_DEVIS="Bonjour {contact},\n\nVeuillez trouver ci-joint notre devis {numero} d'un montant de {montant} TTC, valable jusqu'au {validite}.\n\nPour l'accepter, il vous suffit de nous le retourner signé avec la mention « Bon pour accord », ou de répondre simplement à cet e-mail.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}";
+// Valeurs qui remplacent les {repères} du modèle pour un devis donné
+function devisValeursMail(d){
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  const emetteur=`${TH.nom} ${TH.sous||""}`.trim();
+  const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
+  return {contact:cli&&cli.contact?cli.contact:"Madame, Monsieur",entreprise:cli?cli.nom:"",numero:d.num,
+    montant:fMoney(devisTTC(d)),validite:d.validite?RelancesCore.dateLongue(d.validite):"—",
+    signature:emetteur+(coord?"\n"+coord:"")};
+}
+function devisMessageDefaut(d){
+  const v=devisValeursMail(d);
+  return String(TH.modeleMailDevis||MODELE_MAIL_DEVIS).replace(/\{(contact|entreprise|numero|montant|validite|signature)\}/g,(m,k)=>v[k]);
+}
+// Garde le texte saisi comme modèle : les valeurs du devis redeviennent des {repères}
+function garderModeleDevis(id){
+  const d=DEVIS.find(x=>x.id===id); if(!d) return;
+  const v=devisValeursMail(d);
+  let t=document.getElementById("ev-msg").value;
+  ["signature","montant","validite","numero","entreprise","contact"].forEach(k=>{ if(v[k]&&v[k]!=="—") t=t.split(v[k]).join("{"+k+"}"); });
+  TH.modeleMailDevis=t; saveData();
+  logActivity("Modèle d'e-mail devis","Modèle enregistré");
+  const b=document.getElementById("ev-modele"); if(b){ b.textContent="✅ Modèle enregistré"; setTimeout(()=>{ if(b) b.textContent="💾 Garder comme modèle"; },2000); }
+}
+function resetModeleDevis(id){
+  if(!confirm("Revenir au message d'origine ?")) return;
+  delete TH.modeleMailDevis; saveData();
+  const d=DEVIS.find(x=>x.id===id); if(d) document.getElementById("ev-msg").value=devisMessageDefaut(d);
+}
+function modalEnvoiDevis(id){
+  const d=DEVIS.find(x=>x.id===id); if(!d){alert("Devis introuvable");return;}
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+  const deja=(d.envois||[]).slice(-1)[0];
+  showModal("✉️ Envoyer le devis "+esc(d.num),`
+    ${deja?`<div class="info-box" style="margin-bottom:12px">Déjà envoyé le ${fDate(deja.date)} à ${esc(deja.to)}.</div>`:""}
+    <div class="field"><label>Destinataire</label><input id="ev-to" type="email" value="${esc(cli&&cli.email)}" placeholder="adresse@client.fr"/></div>
+    <div class="field"><label>Objet</label><input id="ev-sujet" value="${esc(`Devis ${d.num} — ${`${TH.nom} ${TH.sous||""}`.trim()}`)}"/></div>
+    <div class="field"><label>Message (modifiable avant l'envoi)</label><textarea id="ev-msg" style="min-height:220px">${esc(devisMessageDefaut(d))}</textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn-sm" id="ev-modele" onclick="garderModeleDevis('${d.id}')" title="Réutiliser ce texte pour les prochains devis">💾 Garder comme modèle</button>
+        ${TH.modeleMailDevis?`<button class="btn-sm" onclick="resetModeleDevis('${d.id}')">↺ Message d'origine</button>`:""}
+      </div></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(d.num)}.pdf</b> joint automatiquement
+      <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer"><input type="checkbox" id="ev-copie" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> M'envoyer une copie</label>
+    <div id="ev-msg-err" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:13px"></div>`,
+    `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
+     <button id="ev-btn" onclick="envoyerDevis('${d.id}')" style="padding:9px 20px;border-radius:8px;border:none;background:${TH.c1};color:#fff;cursor:pointer;font-weight:700;font-size:13px;font-family:'Inter',sans-serif">✉️ Envoyer</button>`);
+}
+async function envoyerDevis(id){
+  const d=DEVIS.find(x=>x.id===id); if(!d) return;
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  const to=document.getElementById("ev-to").value.trim();
+  const sujet=document.getElementById("ev-sujet").value.trim()||`Devis ${d.num}`;
+  const texte=document.getElementById("ev-msg").value;
+  const copie=document.getElementById("ev-copie").checked;
+  const err=document.getElementById("ev-msg-err"), btn=document.getElementById("ev-btn");
+  const erreur=m=>{err.textContent="⚠️ "+m; err.style.display="block"; btn.disabled=false; btn.textContent="✉️ Envoyer";};
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return erreur("Adresse e-mail du destinataire invalide.");
+  err.style.display="none"; btn.disabled=true; btn.textContent="⟳ Préparation du PDF…";
+  try{
+    const pdf=await htmlVersPdfBase64(devisDocHTML(d,false));
+    btn.textContent="⟳ Envoi…";
+    const nomFichier=`Devis ${d.num}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
+    const {data,error}=await sbClient.functions.invoke("relances-auto",{body:{action:"email",to,subject:sujet,text:texte,copie,pieceJointe:{nom:nomFichier,contenu:pdf}}});
+    let msg=data&&data.error;
+    if(error){ try{ const b=await error.context.json(); msg=b.error||error.message; }catch(_){ msg=error.message; } }
+    if(msg) return erreur(msg);
+    d.envois=d.envois||[]; d.envois.push({date:getToday(),to});
+    if(d.statut==="brouillon") d.statut="envoye";
+    if(cli&&!cli.email) cli.email=to;
+    logActivity("Devis envoyé par e-mail",`${d.num} → ${to}`);
+    logDocument("devis",d.id,d.num,cli?cli.nom:"",devisTTC(d));
+    saveData(); closeModal(); renderPage();
+    alert(`✅ Devis ${d.num} envoyé à ${to}.`);
+  }catch(e){ erreur(e.message||String(e)); }
+}
+window.modalEnvoiDevis=modalEnvoiDevis; window.envoyerDevis=envoyerDevis; window.garderModeleDevis=garderModeleDevis; window.resetModeleDevis=resetModeleDevis;
 
 // ════════════════════════════════════════════════════════
 // ── STATISTIQUES ────────────────────────────────────────
@@ -6022,6 +6159,7 @@ function renderClientFiche(){
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
             <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" title="PDF" style="border-color:#86efac;background:#f0fdf4;color:#15803d">📄</button>
+            <button class="btn-sm" onclick="modalEnvoiDevis('${d.id}')" title="Envoyer par e-mail" style="border-color:#bae6fd;background:#f0f9ff;color:#0369a1">✉️${(d.envois||[]).length?"✓":""}</button>
             <button class="btn-sm" onclick="modalDocSigne('${c.id}','${d.id}')" title="Joindre le devis signé" style="border-color:#c4b5fd;background:#f5f3ff;color:#6d28d9">${(c.docsSignes||[]).some(x=>x.devisId===d.id)?"✅":"✍️"}</button>
             <button class="btn-sm btn-edit" onclick="modalDevis('${d.id}')">✏️</button>
             <button class="btn-sm btn-danger" onclick="delDevis('${d.id}')">🗑️</button>
