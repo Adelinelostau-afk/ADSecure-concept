@@ -1031,7 +1031,7 @@ function facEstPayee(f){ return facReste(f)<=0 && facTTC(f)>0; }
 // Détermine le statut réel d'une facture selon ses paiements et son échéance
 function facStatutReel(f){
   if(f.statut==="brouillon"||f.statut==="annulee") return f.statut;
-  if(facEstPayee(f)) return "payee";
+  if(facEstPayee(f)||f.statut==="payee") return "payee"; // « Payée » choisi à la main = réglée
   if(facPaye(f)>0) return "partiel";
   if(f.ech && f.ech<getToday()) return "retard";
   return "envoyee";
@@ -1276,6 +1276,7 @@ async function syncPull(){
     if(error){setSyncBadge("error");return false;}
     if(rows && rows.data){
       applyDataObject(rows.data);
+      await syncRelancesLog();
       saveDataLocal();
       setSyncBadge("ok");
       return true;
@@ -1503,7 +1504,7 @@ let UNITES=["unité","forfait","heure","jour","m","m²","ml (mètre linéaire)",
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function badge(label,bg,color){return `<span class="badge" style="background:${bg};color:${color}">${label}</span>`;}
-function alertCount(){return FACTURES.filter(f=>f.statut==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length;}
+function alertCount(){return FACTURES.filter(f=>facStatutReel(f)==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length;}
 function activeRubs(){return [...RUBS].sort((a,b)=>a.ordre-b.ordre).filter(r=>r.actif);}
 function kpi(label,value,color,small){return`<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value${small?" small":""}" style="color:${color||TH.c1}">${value}</div></div>`;}
 function weekStart(offset){const d=new Date();const day=d.getDay()===0?6:d.getDay()-1;d.setDate(d.getDate()-day+(offset||0)*7);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -1952,6 +1953,7 @@ function modalClient(id){
       <div class="field"><label>Dernière commande</label><input type="date" id="c-date" value="${c.dernCmd}"/></div>
       <div class="field"><label>CA total (€)</label><input type="number" id="c-ca" value="${c.ca}"/></div>
     </div>
+    <div class="field"><label>Relance prévue</label><input type="date" id="c-relance" value="${c.dateRelance||""}"/>${c.relanceEnvoyee&&c.relanceEnvoyee===c.dateRelance?`<div style="font-size:11px;color:#15803d;margin-top:4px">✅ Relance automatique envoyée</div>`:""}</div>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:6px 0"/>
     <div class="section-sub" style="margin-bottom:4px">Pour le contrat de maintenance vidéosurveillance</div>
     <div class="field-row">
@@ -1968,7 +1970,7 @@ function modalClient(id){
 }
 function saveClient(id){
   const obj={nom:document.getElementById("c-nom").value,contact:document.getElementById("c-contact").value,adresse:document.getElementById("c-adresse").value.trim(),tel:document.getElementById("c-tel").value,email:document.getElementById("c-email").value,cat:document.getElementById("c-cat").value,status:document.getElementById("c-status").value,dernCmd:document.getElementById("c-date").value,ca:Number(document.getElementById("c-ca").value),
-    formeJuridique:document.getElementById("c-forme").value.trim(),siret:document.getElementById("c-siret").value.trim(),representantQualite:document.getElementById("c-qualite").value.trim(),nbCameras:document.getElementById("c-nbcam").value?Number(document.getElementById("c-nbcam").value):""};
+    formeJuridique:document.getElementById("c-forme").value.trim(),siret:document.getElementById("c-siret").value.trim(),representantQualite:document.getElementById("c-qualite").value.trim(),nbCameras:document.getElementById("c-nbcam").value?Number(document.getElementById("c-nbcam").value):"",dateRelance:document.getElementById("c-relance").value||""};
   if(id){CLIENTS=CLIENTS.map(c=>c.id===id?{...c,...obj}:c);}else{CLIENTS.push({...obj,id:uid()});}
   closeModal();renderPage();renderNav();
 }
@@ -2900,7 +2902,7 @@ function renderFacturesCard(){
 function renderFactures(){
   const actives=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut));
   const totalEncaisse=actives.reduce((s,f)=>s+facPaye(f),0);
-  const totalReste=actives.reduce((s,f)=>s+facReste(f),0);
+  const totalReste=actives.filter(f=>facStatutReel(f)!=="payee").reduce((s,f)=>s+facReste(f),0);
   const enRetard=FACTURES.filter(f=>facStatutReel(f)==="retard");
   const resteRetard=enRetard.reduce((s,f)=>s+facReste(f),0);
   return `
@@ -3006,7 +3008,7 @@ function renderAdmin(){
   const actives=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut));
   const totalDu=actives.reduce((s,f)=>s+facTTC(f),0);
   const totalEncaisse=actives.reduce((s,f)=>s+facPaye(f),0);
-  const totalReste=actives.reduce((s,f)=>s+facReste(f),0);
+  const totalReste=actives.filter(f=>facStatutReel(f)!=="payee").reduce((s,f)=>s+facReste(f),0);
   const enRetard=FACTURES.filter(f=>{const st=facStatutReel(f);return st==="retard";});
   const resteRetard=enRetard.reduce((s,f)=>s+facReste(f),0);
   return `
@@ -3088,6 +3090,333 @@ function delPaiement(id,idx){
   logActivity("Paiement supprimé",f.num);
   modalPaiement(id);renderPage();renderNav();
 }
+// ══════════════════════════════════════════════════════════
+// ── RELANCES AUTOMATIQUES : moteur commun (appli + serveur) ──
+// ══════════════════════════════════════════════════════════
+// Même code dans app.html (aperçu) et dans la fonction Supabase « relances-auto »
+// (envoi). Ne dépend de rien : reçoit les données, la date du jour et les clés
+// déjà envoyées, et renvoie la liste des e-mails à envoyer aujourd'hui.
+const RelancesCore=(function(){
+  const DEFAUT={
+    actif:false,
+    copie:true,
+    factures:{actif:true,j1:7,j2:15,j3:15,miseEnDemeure:false},
+    contrats:{reconduction:true,visites:true,visitesJours:7},
+    prospects:{actif:true},
+    clients:{actif:true},
+    objetSuivi:"Nous revenons vers vous",
+    texteSuivi:"Bonjour {contact},\n\nNous revenons vers vous suite à notre dernier échange et souhaitions savoir si vous aviez des questions ou des besoins concernant votre projet.\n\nNous restons à votre disposition pour en parler.\n\nCordialement,"
+  };
+  const FENETRE=3; // jours de rattrapage pour une relance datée (si l'envoi d'un jour a été manqué)
+  const MAX_PAR_PASSAGE=40;
+
+  function config(TH){
+    const c=(TH&&TH.relancesAuto)||{};
+    return {...DEFAUT,...c,
+      factures:{...DEFAUT.factures,...(c.factures||{})},
+      contrats:{...DEFAUT.contrats,...(c.contrats||{})},
+      prospects:{...DEFAUT.prospects,...(c.prospects||{})},
+      clients:{...DEFAUT.clients,...(c.clients||{})}};
+  }
+
+  // ── Dates (chaînes AAAA-MM-JJ, midi local pour éviter les décalages) ──
+  function ymd(x){return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");}
+  function addDays(d,n){const x=new Date(d+"T12:00:00");x.setDate(x.getDate()+n);return ymd(x);}
+  function diff(a,b){return Math.round((new Date(a+"T12:00:00")-new Date(b+"T12:00:00"))/86400000);} // a - b en jours
+  function shiftMonths(d,n){if(!d)return"";const x=new Date(d+"T12:00:00");const j=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+n);const dern=new Date(x.getFullYear(),x.getMonth()+1,0,12).getDate();x.setDate(Math.min(j,dern));return ymd(x);}
+  function addMonths(d,n){if(!d)return"";const x=new Date(d+"T12:00:00");const j=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+n);const dern=new Date(x.getFullYear(),x.getMonth()+1,0,12).getDate();if(j>dern){x.setDate(dern);}else{x.setDate(j);x.setDate(x.getDate()-1);}return ymd(x);}
+  const MOIS=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  function dateLongue(d){if(!d)return"—";const [y,m,j]=d.split("-").map(Number);return j+" "+MOIS[m-1]+" "+y;}
+  function euros(n){const v=Math.round(Number(n||0)*100)/100;const [e,c]=v.toFixed(2).split(".");return e.replace(/\B(?=(\d{3})+(?!\d))/g," ")+(c==="00"?"":","+c)+" €";}
+
+  // ── Factures ──
+  function tauxTVA(f){return(f.tva!==undefined&&f.tva!==null)?f.tva:20;}
+  function ht(f){if(f.lignes&&f.lignes.length)return f.lignes.reduce((s,l)=>s+(l.qte||0)*(l.pu||0),0);return Math.round((f.ttc||0)/(1+tauxTVA(f)/100));}
+  function ttc(f){if(f.lignes&&f.lignes.length)return ht(f)*(1+tauxTVA(f)/100);return f.ttc||0;}
+  function paye(f){return(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);}
+  function reste(f){return Math.max(0,Math.round((ttc(f)-paye(f))*100)/100);}
+  const LIB_FAC=["","1ère relance","2ème relance","Mise en demeure"];
+
+  // ── Contrats (mêmes règles que la fiche client) ──
+  function echeance(x,today){let fin=x.dateFin;if(!fin)return"";for(let i=0;i<30&&!x.resilie&&fin<today;i++)fin=addMonths(addDays(fin,1),12);return fin;}
+  function infoL215(x,today){
+    if(x.version!=="part"||x.resilie||!x.dateFin)return null;
+    const ech=echeance(x,today),limite=shiftMonths(ech,-1);
+    const debut=shiftMonths(limite,-3),fin=shiftMonths(limite,-1);
+    const envoye=(x.infoReconduction||{})[ech];
+    if(envoye)return{ech,limite,debut,fin,etat:"envoye"};
+    if(today<debut)return null;
+    return{ech,limite,debut,fin,etat:today<=fin?"afaire":"retard"};
+  }
+
+  function signature(TH){
+    const nom=((TH.nom||"")+" "+(TH.sous||"")).trim();
+    const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
+    return nom+(coord?"\n"+coord:"");
+  }
+  function trouverClient(data,id,nom){
+    const L=data.CLIENTS||[];
+    return L.find(c=>id&&c.id===id)||L.find(c=>nom&&c.nom===nom)||null;
+  }
+  function emailOk(e){return typeof e==="string"&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());}
+
+  // data : objet app_data · today : "AAAA-MM-JJ" · envoyees : Map clé → date d'envoi (AAAA-MM-JJ) des relances déjà parties
+  // Renvoie {aEnvoyer:[…], sansEmail:[…]}
+  function calculer(data,today,envoyees){
+    const TH=data.TH||{};
+    const cfg=config(TH);
+    const sig=signature(TH);
+    const out=[],sansEmail=[];
+    const deja=k=>envoyees&&envoyees.has(k);
+    const ajouter=(r,email)=>{if(deja(r.cle))return;if(!emailOk(email)){sansEmail.push(r);return;}out.push({...r,email:email.trim()});};
+
+    // 1. Factures impayées
+    if(cfg.factures.actif){
+      (data.FACTURES||[]).forEach(f=>{
+        if(["brouillon","annulee","payee"].includes(f.statut)||!f.ech||f.ech>=today)return;
+        const r=reste(f);if(r<=0)return;
+        // Relances déjà faites : saisies à la main (f.relances) ou envoyées automatiquement
+        const faites=(f.relances||[]).map((x,i)=>({n:x.niveau||i+1,date:x.date||""}));
+        [1,2,3].forEach(n=>{const k=`fac:${f.id}:${n}`;if(deja(k)&&!faites.some(x=>x.n===n))faites.push({n,date:(envoyees.get&&envoyees.get(k))||today});});
+        const nMax=faites.reduce((m,x)=>Math.max(m,x.n),0);
+        const derniere=faites.reduce((m,x)=>x.date>m?x.date:m,"");
+        const n=nMax+1;
+        if(n>3||(n===3&&!cfg.factures.miseEnDemeure))return;
+        const due=n===1?addDays(f.ech,cfg.factures.j1):addDays(derniere||f.ech,n===2?cfg.factures.j2:cfg.factures.j3);
+        if(today<due)return;
+        const cli=trouverClient(data,f.clientId,f.client);
+        const contact=cli&&cli.contact?cli.contact:"Madame, Monsieur";
+        const retard=diff(today,f.ech);
+        let sujet,texte;
+        if(n===1){
+          sujet=`Relance amiable — Facture ${f.num}`;
+          texte=`Bonjour ${contact},\n\nSauf erreur ou omission de notre part, il nous semble que la facture ${f.num} d'un montant de ${euros(r)} (échéance du ${dateLongue(f.ech)}) n'a pas encore été réglée.\n\nNous vous remercions de bien vouloir procéder à son règlement dans les meilleurs délais ou de nous contacter si vous avez la moindre question. Si votre règlement a été effectué entre-temps, merci de ne pas tenir compte de ce message.\n\nCordialement,\n${sig}`;
+        }else if(n===2){
+          sujet=`2ème relance — Facture ${f.num} impayée`;
+          texte=`Bonjour ${contact},\n\nNous revenons vers vous concernant la facture ${f.num} d'un montant de ${euros(r)}, dont l'échéance est dépassée depuis ${retard} jour(s) (${dateLongue(f.ech)}).\n\nMalgré notre première relance, nous n'avons pas reçu votre règlement. Merci de procéder au paiement sans délai ou de nous contacter pour convenir d'un arrangement.\n\nÀ défaut de réponse sous 8 jours, nous serons contraints d'engager une procédure de recouvrement.\n\nCordialement,\n${sig}`;
+        }else{
+          sujet=`Mise en demeure — Facture ${f.num}`;
+          texte=`Bonjour ${contact},\n\nEn l'absence de règlement de la facture ${f.num} d'un montant de ${euros(r)} malgré nos relances successives, nous vous mettons en demeure de procéder au paiement de cette somme dans un délai de 8 jours à compter de la réception de ce message.\n\nPassé ce délai, nous nous réservons le droit d'engager toute procédure judiciaire nécessaire au recouvrement de cette créance.\n\nCordialement,\n${sig}`;
+        }
+        ajouter({cle:`fac:${f.id}:${n}`,type:"facture",niveau:n,libelle:LIB_FAC[n],refId:f.id,client:f.client||(cli&&cli.nom)||"",sujet,texte},cli&&cli.email);
+      });
+    }
+
+    // 2. Contrats : information avant reconduction (particuliers) + rappel des visites
+    if(cfg.contrats.reconduction){
+      (data.CLIENTS||[]).forEach(c=>(c.contratsSignes||[]).forEach(x=>{
+        const i=infoL215(x,today);if(!i||i.etat==="envoye")return;
+        const prest=((TH.nom||"")+" "+(TH.sous||"")).trim();
+        const moyens=`par lettre recommandée avec accusé de réception adressée à ${prest}${TH.contratSiege?", "+TH.contratSiege:""}${TH.email?", ou par courrier électronique à "+TH.email:""}`;
+        const prix=Number(x.prixHT||0),prixTTC=Math.round(prix*1.085*100)/100;
+        const sujet="Information sur la reconduction de votre contrat de maintenance";
+        const texte=`Madame, Monsieur,\n\nLe contrat de maintenance de votre système de vidéosurveillance${x.forfaitLabel?` (forfait ${x.forfaitLabel})`:""}, conclu le ${dateLongue(x.dateSignature)}, arrive au terme de sa période en cours le ${dateLongue(i.ech)}.\n\nSauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${euros(prix)} HT, soit ${euros(prixTTC)} TTC par mois.\n\nConformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard le :\n\n    ${dateLongue(i.limite).toUpperCase()}\n\nSi vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer la maintenance de votre installation, dont les visites préventives semestrielles.\n\nNous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${TH.contratRepresentant||""}${TH.contratQualite?", "+TH.contratQualite:""}\n${sig}`;
+        ajouter({cle:`l215:${x.id}:${i.ech}`,type:"reconduction",refId:x.id,clientId:c.id,ech:i.ech,libelle:"Information reconduction",client:c.nom,sujet,texte},c.email);
+      }));
+    }
+    if(cfg.contrats.visites){
+      const j=Number(cfg.contrats.visitesJours)||7;
+      (data.EVENTS||[]).forEach(e=>{
+        if(!e.contratId||!e.date||e.date<today||diff(e.date,today)>j||e.rappelEnvoye===e.date)return;
+        const c=trouverClient(data,e.clientId,e.client);
+        const contact=c&&c.contact?c.contact:"Madame, Monsieur";
+        const sujet=`Rappel : visite de maintenance le ${dateLongue(e.date)}`;
+        const texte=`Bonjour ${contact},\n\nDans le cadre de votre contrat de maintenance, notre technicien passera pour la visite préventive de votre système de vidéosurveillance le ${dateLongue(e.date)}${e.heure?" à "+e.heure.replace(":","h"):""}.\n\nMerci de vous assurer que l'accès au matériel (enregistreur, caméras) sera possible. Si ce créneau ne vous convient pas, contactez-nous pour le déplacer.\n\nCordialement,\n${sig}`;
+        ajouter({cle:`visite:${e.id}:${e.date}`,type:"visite",refId:e.id,libelle:"Rappel de visite",client:(c&&c.nom)||e.client||"",sujet,texte},c&&c.email);
+      });
+    }
+
+    // 3. Prospects et clients : à la date de relance prévue
+    const suivi=(nom,contact)=>({sujet:cfg.objetSuivi||DEFAUT.objetSuivi,
+      texte:String(cfg.texteSuivi||DEFAUT.texteSuivi).replace(/\{contact\}/g,contact||"Madame, Monsieur").replace(/\{entreprise\}/g,nom||"")+"\n"+sig});
+    const dansFenetre=d=>d&&d<=today&&diff(today,d)<=FENETRE;
+    if(cfg.prospects.actif){
+      (data.PROSPECTS||[]).forEach(p=>{
+        if(["gagne","perdu"].includes(p.stage)||!dansFenetre(p.date)||p.relanceEnvoyee===p.date)return;
+        const m=suivi(p.company||p.name,p.name);
+        ajouter({cle:`prosp:${p.id}:${p.date}`,type:"prospect",refId:p.id,libelle:"Relance prospect",client:p.company||p.name||"",...m},p.email);
+      });
+    }
+    if(cfg.clients.actif){
+      (data.CLIENTS||[]).forEach(c=>{
+        if(!dansFenetre(c.dateRelance)||c.relanceEnvoyee===c.dateRelance)return;
+        const m=suivi(c.nom,c.contact);
+        ajouter({cle:`cli:${c.id}:${c.dateRelance}`,type:"client",refId:c.id,libelle:"Relance client",client:c.nom||"",...m},c.email);
+      });
+    }
+    return{aEnvoyer:out.slice(0,MAX_PAR_PASSAGE),sansEmail,cfg};
+  }
+
+  // Reporte dans les données de l'appli les relances envoyées par le serveur.
+  // Renvoie le nombre de modifications (0 = rien de nouveau).
+  function reporter(data,lignes){
+    let n=0;
+    (lignes||[]).forEach(l=>{
+      if(l.statut!=="envoye")return;
+      const d=(l.created_at||"").slice(0,10);
+      const [type,ref,extra]=l.cle.split(":");
+      if(type==="fac"){
+        const f=(data.FACTURES||[]).find(x=>x.id===ref);if(!f)return;
+        f.relances=f.relances||[];
+        if(f.relances.some(r=>r.cle===l.cle))return;
+        const niv=Number(extra);
+        f.relances.push({date:d,niveau:niv,label:LIB_FAC[niv]||"Relance",auto:true,cle:l.cle});n++;
+      }else if(type==="l215"){
+        (data.CLIENTS||[]).forEach(c=>(c.contratsSignes||[]).forEach(x=>{
+          if(x.id!==ref)return;x.infoReconduction=x.infoReconduction||{};
+          if(!x.infoReconduction[extra]){x.infoReconduction[extra]=d;n++;}
+        }));
+      }else if(type==="visite"){
+        const e=(data.EVENTS||[]).find(x=>x.id===ref);
+        if(e&&e.rappelEnvoye!==extra){e.rappelEnvoye=extra;n++;}
+      }else if(type==="prosp"){
+        const p=(data.PROSPECTS||[]).find(x=>x.id===ref);
+        if(p&&p.relanceEnvoyee!==extra){p.relanceEnvoyee=extra;n++;}
+      }else if(type==="cli"){
+        const c=(data.CLIENTS||[]).find(x=>x.id===ref);
+        if(c&&c.relanceEnvoyee!==extra){c.relanceEnvoyee=extra;n++;}
+      }
+    });
+    return n;
+  }
+
+  return{DEFAUT,config,calculer,reporter,dateLongue};
+})();
+
+
+// ── Relances automatiques : historique serveur + réglages ──
+let RELANCES_LOG=[];      // lignes de la table relances_log (envoyées par le serveur)
+let relancesBusy="";      // "test" | "run" pendant un appel à la fonction
+
+// Récupère l'historique des envois et le reporte dans les factures, contrats, prospects…
+async function syncRelancesLog(){
+  try{
+    if(!currentUser||!currentUser.tenant_id) return 0;
+    const {data,error}=await sbClient.from("relances_log")
+      .select("cle,statut,created_at,type,niveau,client,email,sujet,erreur")
+      .eq("tenant_id",currentUser.tenant_id)
+      .order("created_at",{ascending:false}).limit(300);
+    if(error){ console.warn("relances_log indisponible:",error.message); return 0; }
+    RELANCES_LOG=data||[];
+    const n=RelancesCore.reporter(getDataObject(),RELANCES_LOG);
+    if(n){ logActivity("Relances automatiques",`${n} envoi(s) reporté(s) dans les fiches`); saveData(); }
+    return n;
+  }catch(e){ console.warn("syncRelancesLog:",e); return 0; }
+}
+
+function relCfg(){ return RelancesCore.config(TH); }
+function relSet(chemin,valeur){
+  const c=JSON.parse(JSON.stringify(relCfg()));
+  const k=chemin.split(".");
+  let o=c; for(let i=0;i<k.length-1;i++) o=o[k[i]];
+  o[k[k.length-1]]=valeur;
+  TH.relancesAuto=c;
+  if(chemin==="actif") logActivity("Relances automatiques",valeur?"Activées":"Désactivées");
+  saveData(); renderPanel();
+}
+function relApercu(){
+  const envoyees=new Map(RELANCES_LOG.filter(l=>l.statut==="envoye").map(l=>[l.cle,(l.created_at||"").slice(0,10)]));
+  return RelancesCore.calculer(getDataObject(),getToday(),envoyees);
+}
+async function relAppel(action){
+  if(relancesBusy) return;
+  relancesBusy=action; renderPanel();
+  try{
+    await syncPush(); // le serveur lit les données en ligne : on envoie d'abord les dernières modifications
+    const {data,error}=await sbClient.functions.invoke("relances-auto",{body:{action}});
+    let msg=data&&data.error;
+    if(error){
+      try{ const b=await error.context.json(); msg=b.error||error.message; }catch(_){ msg=error.message; }
+    }
+    if(msg){ alert("⚠️ "+msg); }
+    else if(action==="test"){ alert(`✅ E-mail de test envoyé à ${data.destinataire}. Vérifiez la boîte de réception (et les indésirables).`); }
+    else{
+      await syncRelancesLog();
+      alert(data.detail?`ℹ️ ${data.detail}`:`✅ ${data.envoyes||0} relance(s) envoyée(s)${data.erreurs?` · ${data.erreurs} erreur(s)`:""}.`);
+      renderPage();
+    }
+  }catch(e){ alert("⚠️ "+(e.message||e)); }
+  relancesBusy=""; renderPanel();
+}
+window.relSet=relSet; window.relAppel=relAppel;
+
+function renderRelancesPanel(){
+  const c=relCfg();
+  const {aEnvoyer,sansEmail}=relApercu();
+  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const sw=(chemin,val,titre,sous)=>`<label style="display:flex;align-items:center;gap:12px;padding:10px 0;cursor:pointer">
+      <input type="checkbox" ${val?"checked":""} onchange="relSet('${chemin}',this.checked)" style="width:20px;height:20px;accent-color:${TH.c1};flex-shrink:0"/>
+      <div><div style="font-size:13px;font-weight:700;color:#0f1b35">${titre}</div>${sous?`<div style="font-size:11px;color:#64748b">${sous}</div>`:""}</div></label>`;
+  const nb=(chemin,val,avant,apres)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#475569;padding:4px 0 4px 32px">${avant}
+      <input type="number" min="1" max="90" value="${val}" onchange="relSet('${chemin}',Math.max(1,Number(this.value)||1))" style="width:58px;padding:5px 6px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;text-align:center"/> ${apres}</div>`;
+  const bloc=(titre,contenu)=>`<div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:6px 14px 10px;margin-bottom:12px;background:#fff">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;padding-top:8px">${titre}</div>${contenu}</div>`;
+  const ico={facture:"🧾",reconduction:"📑",visite:"🛠️",prospect:"🎯",client:"👤"};
+  const ligneApercu=r=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #f1f5f9">
+      <span style="font-size:16px">${ico[r.type]||"✉️"}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f1b35">${esc(r.client)} <span style="font-weight:600;color:${TH.c1}">· ${esc(r.libelle)}</span></div>
+      <div style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.email||"⚠️ pas d'e-mail sur la fiche")} — ${esc(r.sujet)}</div></div></div>`;
+  const hist=RELANCES_LOG.slice(0,25).map(l=>{
+    const d=new Date(l.created_at);
+    const ok=l.statut==="envoye";
+    return`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #f1f5f9">
+      <span style="font-size:16px">${ok?"✅":"❌"}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f1b35">${esc(l.client)} <span style="font-weight:500;color:#64748b;font-size:11px">· ${d.toLocaleDateString("fr-FR",{day:"2-digit",month:"short"})} ${d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</span></div>
+      <div style="font-size:11px;color:${ok?"#64748b":"#991b1b"}">${esc(ok?(l.sujet+" → "+l.email):(l.erreur||"Erreur d'envoi — nouvel essai au prochain passage"))}</div></div></div>`;
+  }).join("");
+  const btn=(action,label,plein)=>`<button onclick="relAppel('${action}')" ${relancesBusy?"disabled":""} style="flex:1;padding:11px 12px;border-radius:9px;border:1.5px solid ${TH.c1};background:${plein?TH.c1:"#fff"};color:${plein?"#fff":TH.c1};cursor:pointer;font-size:13px;font-weight:700;font-family:'Inter',sans-serif;opacity:${relancesBusy?0.6:1}">${relancesBusy===action?"⟳ En cours…":label}</button>`;
+
+  return`<div class="panel-overlay">
+    <div class="panel-bg" onclick="closePanel()"></div>
+    <div class="panel">
+      <div class="panel-head">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button onclick="closePanel();openPanel('settings')" style="width:30px;height:30px;border-radius:8px;border:1.5px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:#64748b">←</button>
+          <div class="panel-title">🔔 Relances automatiques</div>
+        </div>
+        <button class="panel-close" onclick="closePanel()">✕</button>
+      </div>
+      <div class="panel-body">
+        <div style="border-radius:12px;padding:12px 14px;margin-bottom:14px;background:${c.actif?"#f0fdf4":"#f8fafc"};border:1.5px solid ${c.actif?"#86efac":"#e2e8f0"}">
+          ${sw("actif",c.actif,c.actif?"Relances automatiques activées":"Relances automatiques désactivées","Envoi chaque matin en semaine (8 h), depuis votre adresse e-mail professionnelle")}
+        </div>
+
+        ${bloc("🧾 Factures impayées",
+          sw("factures.actif",c.factures.actif,"Relancer les factures en retard","Aucune relance si la facture est payée entre-temps")+
+          (c.factures.actif?
+            nb("factures.j1",c.factures.j1,"1ère relance","jours après l'échéance")+
+            nb("factures.j2",c.factures.j2,"2ème relance","jours après la 1ère")+
+            sw("factures.miseEnDemeure",c.factures.miseEnDemeure,"Envoyer aussi la mise en demeure","Recommandé : laisser décoché et l'envoyer vous-même en recommandé")+
+            (c.factures.miseEnDemeure?nb("factures.j3",c.factures.j3,"Mise en demeure","jours après la 2ème"):""):""))}
+
+        ${bloc("📑 Contrats de maintenance",
+          sw("contrats.reconduction",c.contrats.reconduction,"Information avant reconduction (particuliers)","Courrier obligatoire (art. L. 215-1), envoyé dès l'ouverture de la période légale")+
+          sw("contrats.visites",c.contrats.visites,"Rappel des visites préventives","Prévient le client avant chaque visite du Planning")+
+          (c.contrats.visites?nb("contrats.visitesJours",c.contrats.visitesJours,"Envoyer","jours avant la visite"):""))}
+
+        ${bloc("🎯 Prospects et clients",
+          sw("prospects.actif",c.prospects.actif,"Prospects du pipeline","À la date « Relance prévue » de la fiche prospect")+
+          sw("clients.actif",c.clients.actif,"Clients","À la date « Relance prévue » de la fiche client")+
+          `<div class="field" style="margin-top:6px"><label>Objet du message</label><input value="${esc(c.objetSuivi)}" onchange="relSet('objetSuivi',this.value)"/></div>
+           <div class="field"><label>Message (votre signature est ajoutée à la fin)</label><textarea style="min-height:130px" onchange="relSet('texteSuivi',this.value)">${esc(c.texteSuivi)}</textarea>
+           <div style="font-size:11px;color:#64748b;margin-top:4px">{contact} = nom du contact · {entreprise} = nom de l'entreprise</div></div>`)}
+
+        ${bloc("⚙️ Options",sw("copie",c.copie,"Recevoir une copie de chaque relance",`Copie cachée à ${esc(TH.email||"votre adresse")}`))}
+
+        <div style="display:flex;gap:8px;margin:4px 0 16px">${btn("test","✉️ E-mail de test",false)}${btn("run","▶️ Lancer maintenant",true)}</div>
+
+        ${bloc(`📅 ${c.actif?"Prochain envoi":"Ce qui partirait aujourd'hui"} · ${aEnvoyer.length}`,
+          aEnvoyer.length?aEnvoyer.map(ligneApercu).join(""):`<div style="padding:12px 0;font-size:12px;color:#94a3b8">Aucune relance à envoyer aujourd'hui.</div>`)}
+
+        ${sansEmail.length?bloc(`⚠️ Impossible à envoyer · ${sansEmail.length}`,
+          `<div style="font-size:11px;color:#b45309;padding-top:6px">Ajoutez une adresse e-mail sur la fiche pour que ces relances partent.</div>`+sansEmail.map(ligneApercu).join("")):""}
+
+        ${bloc(`🕓 Derniers envois · ${RELANCES_LOG.length}`,hist||`<div style="padding:12px 0;font-size:12px;color:#94a3b8">Aucun envoi pour le moment.</div>`)}
+      </div>
+    </div>
+  </div>`;
+}
+
 // ── NIVEAUX DE RELANCE ──────────────────────────────────
 function niveauRelance(f){
   const retard=Math.abs(daysDiff(f.ech));
@@ -3434,8 +3763,8 @@ function dbwHero(){
   const ws=weekStart(0);const we=addDays(ws,6);
   const evSem=EVENTS.filter(e=>e.date>=ws&&e.date<=we);
   const stAl=STOCK.filter(s=>s.qte<s.seuil);
-  const facR=FACTURES.filter(f=>f.statut==="retard");
-  const ca=FACTURES.filter(f=>["envoyee","retard"].includes(f.statut)).reduce((s,f)=>s+f.ttc,0);
+  const facR=FACTURES.filter(f=>facStatutReel(f)==="retard");
+  const ca=FACTURES.filter(f=>!["brouillon","annulee","payee"].includes(facStatutReel(f))).reduce((s,f)=>s+facReste(f),0);
   const tUrg=TACHES.filter(t=>!t.done&&t.prio==="haute");
   return `<div class="db-hero" style="background:linear-gradient(135deg,${TH.sidebar} 0%,${TH.c1} 55%,${TH.c2} 100%)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative;z-index:1">
@@ -3460,7 +3789,7 @@ function dbwHero(){
 }
 function dbwAlertes(){
   const stAl=STOCK.filter(s=>s.qte<s.seuil);
-  const facR=FACTURES.filter(f=>f.statut==="retard");
+  const facR=FACTURES.filter(f=>facStatutReel(f)==="retard");
   const ctrAl=contratsAlertesL215();
   if(!facR.length&&!stAl.length&&!ctrAl.length) return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">Rien à signaler</div></div></div><div style="padding:22px;text-align:center;font-size:13px;color:rgba(26,33,24,0.38)">Aucune alerte en cours 🎉</div></div>`;
   return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">${facR.length+stAl.length+ctrAl.length} point(s) à traiter</div></div></div>
@@ -6642,6 +6971,9 @@ function openPanel(id){
   if(id==="settings"&&hasRole("admin")){
     loadProfiles().then(()=>{ if(activePanel==="settings"){ renderPanel(); } });
   }
+  if(id==="relances"){
+    syncRelancesLog().then(()=>{ if(activePanel==="relances"){ renderPanel(); } });
+  }
 }
 function closePanel(){activePanel=null;document.getElementById("panel-container").innerHTML="";}
 function renderPanel(){
@@ -6652,6 +6984,7 @@ function renderPanel(){
   else if(activePanel==="journal")  pc.innerHTML=renderJournalPanel();
   else if(activePanel==="docs")     pc.innerHTML=renderDocsPanel();
   else if(activePanel==="backups")  {pc.innerHTML=renderBackupsPanel([],true);loadBackupsList();}
+  else if(activePanel==="relances") pc.innerHTML=renderRelancesPanel();
   else {pc.innerHTML="";return;}
   bindPanel();
 }
@@ -7066,6 +7399,13 @@ function renderSettingsPanel(){
               onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
               <span style="font-size:20px">📜</span>
               <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Journal d'activité</div><div style="font-size:11px;color:#64748b">${JOURNAL.length} événement(s) enregistré(s)</div></div>
+              <span style="margin-left:auto;color:#94a3b8">›</span>
+            </button>
+            <button onclick="closePanel();openPanel('relances')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left"
+              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
+              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
+              <span style="font-size:20px">🔔</span>
+              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Relances automatiques</div><div style="font-size:11px;color:#64748b">${RelancesCore.config(TH).actif?"Activées · envoi chaque matin":"Désactivées"}</div></div>
               <span style="margin-left:auto;color:#94a3b8">›</span>
             </button>
             <button onclick="closePanel();openPanel('backups')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
