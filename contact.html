@@ -71,7 +71,7 @@
           <div class="contact-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
           <div>
             <h4>Email</h4>
-            <a href="mailto:adsecureconcept@gmail.com">adsecureconcept@gmail.com</a>
+            <a href="mailto:contact@adsecureconcept.fr">contact@adsecureconcept.fr</a>
           </div>
         </div>
         <div class="contact-info-item">
@@ -138,12 +138,12 @@
               <textarea id="f-msg" required placeholder="Décrivez-nous votre projet ou vos besoins..."></textarea>
             </div>
             <button type="submit" class="form-submit">Envoyer ma demande</button>
-            <p style="font-size:13px;opacity:.7;margin-top:10px">Votre messagerie s'ouvre avec la demande pré-remplie. Vos informations servent uniquement à vous répondre (<a href="mentions-legales.html#confidentialite">confidentialité</a>).</p>
+            <p style="font-size:13px;opacity:.7;margin-top:10px">Votre messagerie s'ouvre avec la demande pré-remplie. Vos informations servent uniquement à vous répondre (<a href="politique-confidentialite.html">confidentialité</a>).</p>
           </form>
           <div class="form-success" id="form-success">
             <div class="check-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
             <h3>Votre message est prêt</h3>
-            <p>Votre messagerie s'est ouverte avec votre demande : appuyez sur Envoyer pour nous la transmettre. Si rien ne s'est ouvert, écrivez-nous à adsecureconcept@gmail.com ou appelez le 0696 43 95 84.</p>
+            <p>Votre messagerie s'est ouverte avec votre demande : appuyez sur Envoyer pour nous la transmettre. Si rien ne s'est ouvert, écrivez-nous à contact@adsecureconcept.fr ou appelez le 0696 43 95 84.</p>
           </div>
         </div>
       </div>
@@ -218,14 +218,14 @@
         <h4>Contact</h4>
         <a href="tel:+596696439584">0696 43 95 84</a>
         <a href="tel:+596696342304">0696 34 23 04</a>
-        <a href="mailto:adsecureconcept@gmail.com">adsecureconcept@gmail.com</a>
+        <a href="mailto:contact@adsecureconcept.fr">contact@adsecureconcept.fr</a>
         <a href="contact.html">Quartier Bellay, 97228 Sainte-Luce</a>
         <a href="app.html" style="color:rgba(247,244,237,0.45);font-size:12px;margin-top:8px">Connexion AD Management</a>
       </div>
     </div>
     <div class="footer-bottom">
       <span>© 2026 AD Secure Concept SAS — SIREN 108 443 326</span>
-      <span><a href="mentions-legales.html">Mentions légales</a> · <a href="mentions-legales.html#confidentialite">Confidentialité</a></span>
+      <span><a href="mentions-legales.html">Mentions légales</a> · <a href="politique-confidentialite.html">Confidentialité</a></span>
     </div>
   </div>
 </footer>
@@ -246,7 +246,7 @@ function handleSubmit(e){
   var v=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
   var nom=(v('f-prenom')+' '+v('f-nom')).trim();
   var corps='Nom : '+nom+'\nEmail : '+v('f-email')+'\nTéléphone : '+(v('f-tel')||'non précisé')+'\nVous êtes : '+v('f-type')+'\n\n'+v('f-msg');
-  window.location.href='mailto:adsecureconcept@gmail.com?subject='+encodeURIComponent('Demande de devis — '+nom)+'&body='+encodeURIComponent(corps);
+  window.location.href='mailto:contact@adsecureconcept.fr?subject='+encodeURIComponent('Demande de devis — '+nom)+'&body='+encodeURIComponent(corps);
   document.getElementById('contact-form').style.display='none';
   document.getElementById('form-success').classList.add('show');
   return false;
