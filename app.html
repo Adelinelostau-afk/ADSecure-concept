@@ -1028,6 +1028,10 @@ function prochainNumero(prefixe,liste){
 }
 // Date d'émission d'une facture (anciennes factures sans date : estimée à 30 jours avant l'échéance)
 function facDate(f){ return f.date||(f.ech?addDays(f.ech,-30):""); }
+// Date de démarrage de la comptabilité (Réglages) : ce qui est antérieur est ignoré dans les chiffres
+function comptaDepuis(){ return (typeof TH!=="undefined"&&TH&&TH.compteDepuis)||""; }
+function dateEnCompta(d){ const dd=comptaDepuis(); return !dd||!d||String(d).slice(0,10)>=dd; }
+function facEnCompta(f){ return dateEnCompta(facDate(f)); }
 // Taux de TVA par défaut des ventes (Martinique : 8,5 %)
 const TVA_DEFAUT=8.5;
 function fTaux(t){ return String(Number(t)||0).replace(".",",")+" %"; }
@@ -1536,7 +1540,7 @@ let UNITES=["unité","forfait","heure","jour","m","m²","ml (mètre linéaire)",
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function badge(label,bg,color){return `<span class="badge" style="background:${bg};color:${color}">${label}</span>`;}
-function alertCount(){return FACTURES.filter(f=>facStatutReel(f)==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length;}
+function alertCount(){return FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length;}
 function activeRubs(){return [...RUBS].sort((a,b)=>a.ordre-b.ordre).filter(r=>r.actif);}
 function kpi(label,value,color,small){return`<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value${small?" small":""}" style="color:${color||TH.c1}">${value}</div></div>`;}
 function weekStart(offset){const d=new Date();const day=d.getDay()===0?6:d.getDay()-1;d.setDate(d.getDate()-day+(offset||0)*7);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -1706,7 +1710,7 @@ let cliTri="nom";           // nom | ca | date | trans
 
 // CA réel d'un client, calculé sur ses factures et devis acceptés
 function cliCA(c){
-  const facs=FACTURES.filter(f=>(f.clientId===c.id||(!f.clientId&&f.client&&f.client===c.nom))&&!["brouillon","annulee"].includes(f.statut)).reduce((s,f)=>s+facTTC(f),0);
+  const facs=FACTURES.filter(f=>facEnCompta(f)&&(f.clientId===c.id||(!f.clientId&&f.client&&f.client===c.nom))&&!["brouillon","annulee"].includes(f.statut)).reduce((s,f)=>s+facTTC(f),0);
   return facs>0?Math.round(facs*100)/100:(c.ca||0);
 }
 // Devis acceptés (y compris passés en bon de commande) et commandes en cours non facturées
@@ -2942,10 +2946,10 @@ function renderFacturesCard(){
 
 // Page Factures dédiée (raccourci barre latérale)
 function renderFactures(){
-  const actives=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut));
+  const actives=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut));
   const totalEncaisse=actives.reduce((s,f)=>s+facPaye(f),0);
   const totalReste=actives.filter(f=>facStatutReel(f)!=="payee").reduce((s,f)=>s+facReste(f),0);
-  const enRetard=FACTURES.filter(f=>facStatutReel(f)==="retard");
+  const enRetard=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
   const resteRetard=enRetard.reduce((s,f)=>s+facReste(f),0);
   return `
     <div class="kpi-grid">
@@ -3079,7 +3083,7 @@ function caisseLignes(){
     id:"ff-"+f.id+"-"+i,date:p.date||f.date||"",sens:"sortie",montant:Number(p.montant)||0,mode:p.mode||"Autre",
     cat:"Achat fournisseur",libelle:"Règlement facture fournisseur "+(f.numFour||f.num||""),tiers:f.four||"",source:"Facture fournisseur",ref:f.num||"",auto:true,srcType:"ff",srcId:f.id})));
   CAISSE.mouvements.forEach(m=>L.push({...m,montant:Number(m.montant)||0,source:"Caisse",ref:m.ref||"",auto:false}));
-  return L.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||"").localeCompare(a.ts||""));
+  return L.filter(l=>dateEnCompta(l.date)).sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||"").localeCompare(a.ts||""));
 }
 // Solde espèces théorique (toutes dates confondues, ou jusqu'à une date incluse)
 function caisseSoldeEspeces(jusqua){
@@ -3512,7 +3516,7 @@ function rpCandidats(t){
   if(t.sens==="debit"){
     return FACFOURN.filter(f=>f.statut!=="brouillon"&&ffReste(f)>0).map(f=>({type:"ff",id:f.id,ref:f.num,tiers:f.four||"",reste:ffReste(f),refs:[f.num,f.numFour].filter(Boolean),date:f.date||""}));
   }
-  const L=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut)&&facStatutReel(f)!=="payee"&&facReste(f)>0).map(f=>{
+  const L=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut)&&facStatutReel(f)!=="payee"&&facReste(f)>0).map(f=>{
     const cli=CLIENTS.find(c=>c.id===f.clientId)||CLIENTS.find(c=>c.nom===f.client);
     return {type:"fac",id:f.id,ref:f.num,tiers:f.client||(cli&&cli.nom)||"",contact:cli&&cli.contact||"",reste:facReste(f),refs:[f.num],date:facDate(f)||""};});
   BCCLIENTS.filter(b=>b.statut!=="facture"&&bccReste(b)>0).forEach(b=>{const cli=CLIENTS.find(c=>c.id===b.clientId);
@@ -3541,7 +3545,7 @@ function rpLibelleDoc(r){
 function rpEtat(t){return RAPPRO[t.id]||null;}
 
 function renderRapprochement(transactions){
-  const tx=transactions.filter(t=>t.id&&t.statut!=="refusée");
+  const tx=transactions.filter(t=>t.id&&t.statut!=="refusée"&&dateEnCompta(String(t.date||"").slice(0,10)));
   const nonRap=tx.filter(t=>!rpEtat(t));
   const credits=nonRap.filter(t=>t.sens!=="debit");
   const sure=credits.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>o.s&&o.s.score>=100&&o.s.raisons.includes("montant")||o.s&&o.s.score>=160);
@@ -3656,11 +3660,11 @@ function rapproDefaire(txId){
 }
 
 function renderAdmin(){
-  const actives=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut));
+  const actives=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut));
   const totalDu=actives.reduce((s,f)=>s+facTTC(f),0);
   const totalEncaisse=actives.reduce((s,f)=>s+facPaye(f),0);
   const totalReste=actives.filter(f=>facStatutReel(f)!=="payee").reduce((s,f)=>s+facReste(f),0);
-  const enRetard=FACTURES.filter(f=>{const st=facStatutReel(f);return st==="retard";});
+  const enRetard=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
   const resteRetard=enRetard.reduce((s,f)=>s+facReste(f),0);
   return `
     <div class="kpi-grid">
@@ -4140,7 +4144,7 @@ function texteRelance(f,niveau){
 }
 
 function modalRelancesImpayes(){
-  const enRetard=FACTURES.filter(f=>facStatutReel(f)==="retard");
+  const enRetard=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
   if(enRetard.length===0){alert("Aucune facture en retard");return;}
   showModal("📨 Relances impayés",`
     <div class="info-box" style="margin-bottom:14px">Sélectionnez une facture pour générer le texte de relance adapté au niveau de retard.</div>
@@ -4458,8 +4462,8 @@ function dbwHero(){
   const ws=weekStart(0);const we=addDays(ws,6);
   const evSem=EVENTS.filter(e=>e.date>=ws&&e.date<=we);
   const stAl=STOCK.filter(s=>s.qte<s.seuil);
-  const facR=FACTURES.filter(f=>facStatutReel(f)==="retard");
-  const ca=FACTURES.filter(f=>!["brouillon","annulee","payee"].includes(facStatutReel(f))).reduce((s,f)=>s+facReste(f),0);
+  const facR=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
+  const ca=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee","payee"].includes(facStatutReel(f))).reduce((s,f)=>s+facReste(f),0);
   const tUrg=TACHES.filter(t=>!t.done&&t.prio==="haute");
   return `<div class="db-hero" style="background:linear-gradient(135deg,${TH.sidebar} 0%,${TH.c1} 55%,${TH.c2} 100%)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative;z-index:1">
@@ -4484,7 +4488,7 @@ function dbwHero(){
 }
 function dbwAlertes(){
   const stAl=STOCK.filter(s=>s.qte<s.seuil);
-  const facR=FACTURES.filter(f=>facStatutReel(f)==="retard");
+  const facR=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
   const ctrAl=contratsAlertesL215();
   if(!facR.length&&!stAl.length&&!ctrAl.length) return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">Rien à signaler</div></div></div><div style="padding:22px;text-align:center;font-size:13px;color:rgba(26,33,24,0.38)">Aucune alerte en cours 🎉</div></div>`;
   return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">${facR.length+stAl.length+ctrAl.length} point(s) à traiter</div></div></div>
@@ -6553,7 +6557,7 @@ function caParMois(){
     const key=d.toISOString().slice(0,7);
     const label=d.toLocaleDateString("fr-FR",{month:"short"});
     // CA encaissé du mois = somme des règlements DATÉS dans ce mois
-    const total=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut))
+    const total=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut))
       .reduce((s,f)=>s+(f.paiements||[])
         .filter(p=>p.date&&p.date.slice(0,7)===key)
         .reduce((a,p)=>a+(p.montant||0),0),0);
@@ -6785,7 +6789,7 @@ function statCard(title,children,th){
 function renderStats(){
   const th=TH, T=getToday(), moisCourant=T.slice(0,7), anCourant=T.slice(0,4);
   const libPeriode=statsAnnee==="tout"?"depuis le début":`en ${statsAnnee}`;
-  const facVivantes=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut));
+  const facVivantes=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut));
   // ── Chiffre d'affaires ──
   const facPeriode=facVivantes.filter(f=>dansPeriode(facDate(f)));
   const caFacture=facPeriode.reduce((s,f)=>s+facTTC(f),0);
@@ -6977,7 +6981,7 @@ function glcEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</
 function glcEur(n){return (Number(n)||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});}
 function glcR(n){return Math.round((Number(n)||0)*100)/100;}
 function glcFacturesClient(c){
-  return FACTURES.filter(f=>(f.clientId===c.id||(!f.clientId&&f.client&&f.client===c.nom))&&f.statut!=="brouillon"&&f.statut!=="annulee");
+  return FACTURES.filter(f=>facEnCompta(f)&&(f.clientId===c.id||(!f.clientId&&f.client&&f.client===c.nom))&&f.statut!=="brouillon"&&f.statut!=="annulee");
 }
 function glcBCClient(c){ return BCCLIENTS.filter(b=>b.clientId===c.id); }
 // Retrouve la chaîne devis → bon de commande → facture
@@ -6999,9 +7003,10 @@ function glcEcritures(c){
     if(f.statut==="payee"&&facReste(f)>0.004) E.push({date:facDate(f)||"",ordre:2,piece:f.num,type:"reg",id:f.id,
       libelle:"Règlement (facture marquée payée, mode non renseigné)",debit:0,credit:glcR(facReste(f))});
   });
-  glcBCClient(c).filter(b=>b.statut!=="facture").forEach(b=>(b.paiements||[]).forEach(p=>E.push({
+  glcBCClient(c).filter(b=>b.statut!=="facture").forEach(b=>(b.paiements||[]).filter(p=>dateEnCompta(p.date||b.date)).forEach(p=>E.push({
     date:p.date||b.date||"",ordre:1,piece:b.num,type:"acompte",id:b.id,
     libelle:"Acompte "+(p.mode||"")+" sur "+b.num+(b.devisNum?" (devis "+b.devisNum+")":""),debit:0,credit:glcR(p.montant)})));
+  const E2=E.filter(e=>e.type==='fac'||dateEnCompta(e.date)||glcFacturesClient(c).some(f=>f.num===e.piece));E.length=0;E.push(...E2);
   E.sort((a,b)=>(a.date||"").localeCompare(b.date||"")||a.ordre-b.ordre);
   let s=0;E.forEach(e=>{s=glcR(s+e.debit-e.credit);e.solde=s;});
   return E;
@@ -9568,6 +9573,10 @@ function renderThemePanel(){
         <div class="p-field"><label class="field-label">T&eacute;l&eacute;phone</label><input type="text" value="${TH.tel||''}" placeholder="06 00 00 00 00" oninput="TH.tel=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">SIRET</label><input type="text" value="${TH.siret||''}" placeholder="000 000 000 00000" oninput="TH.siret=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">N&deg; TVA intracom.</label><input type="text" value="${TH.tvaIntra||''}" placeholder="FR00000000000" oninput="TH.tvaIntra=this.value;saveData()"/></div>
+        <div class="p-field"><label class="field-label">D&eacute;marrage de la comptabilit&eacute;</label>
+          <div style="display:flex;gap:6px"><input type="date" value="${TH.compteDepuis||''}" onchange="TH.compteDepuis=this.value;saveData();renderPage();renderNav()" style="flex:1"/>
+          ${TH.compteDepuis?`<button class="btn-sm" onclick="TH.compteDepuis='';saveData();renderPanel();renderPage();renderNav()">Effacer</button>`:""}</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">Factures, r&egrave;glements, caisse, banque et statistiques ant&eacute;rieurs &agrave; cette date sont ignor&eacute;s dans les chiffres (ils restent consultables dans leurs listes).</div></div>
         <div class="p-field"><label class="field-label">Mentions l&eacute;gales PDF</label><input type="text" value="${TH.mentionsLegales||''}" placeholder="Auto-entrepreneur &middot; Dispen..." oninput="TH.mentionsLegales=this.value;saveData()"/></div>
         <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
         ${renderSigMailReglages()}
