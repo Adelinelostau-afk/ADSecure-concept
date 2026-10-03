@@ -727,6 +727,7 @@ function roleLabel(r){
 // ── Journal d'activité ──────────────────────────────────────────────────────
 let JOURNAL=[];
 let INTERVENTIONS=[]; // rapports d'intervention
+let RAPPRO={};        // rapprochement bancaire Qonto : idTransaction → document
 function logActivity(action,details){
   JOURNAL.unshift({
     id:uid(),
@@ -1211,7 +1212,7 @@ function saveDataLocal(){
 function getDataObject(){
   return {
     CLIENTS, EVENTS, STOCK, COMMANDES, FACTURES, FACFOURN, TACHES, PROSPECTS, DEVIS, BCCLIENTS, DOCSHIST, CATALOGUE, CAT_PRODUITS, CAT_STOCK, UNITES, TRANSMISSIONS,
-    TH, RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS
+    TH, RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS, RAPPRO
   };
 }
 function applyDataObject(d){
@@ -1238,6 +1239,7 @@ function applyDataObject(d){
   if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
   if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
   if(d.INTERVENTIONS && Array.isArray(d.INTERVENTIONS)) INTERVENTIONS=d.INTERVENTIONS;
+  if(d.RAPPRO && typeof d.RAPPRO==="object") RAPPRO=d.RAPPRO;
 }
 
 function setSyncBadge(status){
@@ -1440,6 +1442,7 @@ function loadData(){
     if(d.FACFOURN && Array.isArray(d.FACFOURN)) FACFOURN=d.FACFOURN;
     if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
     if(d.INTERVENTIONS && Array.isArray(d.INTERVENTIONS)) INTERVENTIONS=d.INTERVENTIONS;
+    if(d.RAPPRO && typeof d.RAPPRO==="object") RAPPRO=d.RAPPRO;
   }catch(e){ console.warn("Chargement impossible:", e); }
 }
 
@@ -3018,19 +3021,7 @@ function renderBanque(){
         </div>`).join("")||`<div style="padding:14px 0;color:${TH.txt}80;font-size:13px">Aucun compte trouvé.</div>`}
       </div>
     </div>
-    <div class="section-card">
-      <div class="section-head"><div class="section-title">Dernières transactions</div><div class="section-sub">${transactions.length} opération(s)</div></div>
-      <div style="padding:6px 20px 14px">
-        ${transactions.length===0?`<div style="padding:20px 0;text-align:center;color:${TH.txt}80;font-size:13px">Aucune transaction récente.</div>`:
-        transactions.map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)">
-          <div style="min-width:0;flex:1">
-            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.libelle||"—"}</div>
-            <div style="font-size:11px;color:${TH.txt}80">${fDateTrans(t.date)}${t.statut?" · "+t.statut:""}</div>
-          </div>
-          <div style="font-weight:700;font-size:13.5px;color:${t.sens==="debit"?"#991b1b":"#15803d"};white-space:nowrap;margin-left:10px">${fMontantSigne(t)}</div>
-        </div>`).join("")}
-      </div>
-    </div>`;
+    ${renderRapprochement(transactions)}`;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -3493,6 +3484,165 @@ function caisseImprimerComptage(id){
     </tbody></table>
     ${c.note?`<div style="background:#f8fafc;border-left:3px solid ${TH.c1};padding:10px 14px;font-size:12px">Note : ${cEsc(c.note)}</div>`:""}
     <div class="sign"><div>Signature de la personne ayant compté</div><div>Signature du responsable</div></div>`);
+}
+
+// ══════════════════════════════════════════════════════════
+// ── RAPPROCHEMENT BANCAIRE QONTO ──────────────────────────
+// ══════════════════════════════════════════════════════════
+// RAPPRO[idTransaction] = {type:"fac"|"bcc"|"ff"|"ignore", id, ref, ts}
+// Associer un crédit Qonto à une facture client y ajoute le règlement (mode Virement) ;
+// associer un débit à une facture fournisseur y ajoute le règlement fournisseur.
+let rapproFiltre="arapprocher";
+function rpE(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function rpNorm(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();}
+function rpCents(n){return Math.round((Number(n)||0)*100);}
+function rpDate(t){return String(t.date||"").slice(0,10)||getToday();}
+// Documents encore à régler, dans le sens de la transaction
+function rpCandidats(t){
+  if(t.sens==="debit"){
+    return FACFOURN.filter(f=>f.statut!=="brouillon"&&ffReste(f)>0).map(f=>({type:"ff",id:f.id,ref:f.num,tiers:f.four||"",reste:ffReste(f),refs:[f.num,f.numFour].filter(Boolean),date:f.date||""}));
+  }
+  const L=FACTURES.filter(f=>!["brouillon","annulee"].includes(f.statut)&&facStatutReel(f)!=="payee"&&facReste(f)>0).map(f=>{
+    const cli=CLIENTS.find(c=>c.id===f.clientId)||CLIENTS.find(c=>c.nom===f.client);
+    return {type:"fac",id:f.id,ref:f.num,tiers:f.client||(cli&&cli.nom)||"",contact:cli&&cli.contact||"",reste:facReste(f),refs:[f.num],date:facDate(f)||""};});
+  BCCLIENTS.filter(b=>b.statut!=="facture"&&bccReste(b)>0).forEach(b=>{const cli=CLIENTS.find(c=>c.id===b.clientId);
+    L.push({type:"bcc",id:b.id,ref:b.num,tiers:cli?cli.nom:"",contact:cli&&cli.contact||"",reste:bccReste(b),refs:[b.num,b.devisNum].filter(Boolean),date:b.date||""});});
+  return L;
+}
+// Score de ressemblance : référence citée dans le libellé, montant identique, nom du client
+function rpSuggestions(t){
+  const lib=rpNorm(t.libelle),libC=lib.replace(/ /g,"");
+  const m=rpCents(t.montant);
+  return rpCandidats(t).map(d=>{
+    let s=0;const raisons=[];
+    if(d.refs.some(r=>r&&libC.includes(rpNorm(r).replace(/ /g,"")))){s+=100;raisons.push("référence");}
+    else{const num=(d.ref.match(/(\d+)$/)||[])[1];if(num&&num.length>=3&&new RegExp("(^|\\D)0*"+Number(num)+"(\\D|$)").test(lib)&&d.ref.slice(0,3)&&lib.includes(rpNorm(d.ref.split("-")[0]))){s+=60;raisons.push("n°");}}
+    if(rpCents(d.reste)===m){s+=60;raisons.push("montant");}
+    const mots=[...rpNorm(d.tiers).split(" "),...rpNorm(d.contact).split(" ")].filter(w=>w.length>=4&&!["sarl","sas","eurl","maison","societe","entreprise"].includes(w));
+    if(mots.some(w=>lib.includes(w))){s+=40;raisons.push("nom");}
+    return {...d,score:s,raisons};
+  }).filter(d=>d.score>0).sort((a,b)=>b.score-a.score);
+}
+function rpLibelleDoc(r){
+  if(!r) return "";
+  if(r.type==="ignore") return "Ignorée";
+  return r.ref||"";
+}
+function rpEtat(t){return RAPPRO[t.id]||null;}
+
+function renderRapprochement(transactions){
+  const tx=transactions.filter(t=>t.id&&t.statut!=="refusée");
+  const nonRap=tx.filter(t=>!rpEtat(t));
+  const credits=nonRap.filter(t=>t.sens!=="debit");
+  const sure=credits.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>o.s&&o.s.score>=100&&o.s.raisons.includes("montant")||o.s&&o.s.score>=160);
+  const L=rapproFiltre==="arapprocher"?nonRap:rapproFiltre==="rapproches"?tx.filter(t=>rpEtat(t)&&rpEtat(t).type!=="ignore"):tx;
+  const chip=(v,l,n)=>`<button onclick="rapproFiltre='${v}';document.getElementById('content').innerHTML=renderBanque()" style="padding:6px 12px;border-radius:999px;border:1.5px solid ${rapproFiltre===v?TH.c1:"#e2e8f0"};background:${rapproFiltre===v?TH.c1:"#fff"};color:${rapproFiltre===v?"#fff":"#475569"};cursor:pointer;font-size:12px;font-weight:700;font-family:'Inter',sans-serif">${l}${n!=null?` · ${n}`:""}</button>`;
+  return `<div class="section-card">
+    <div class="section-head">
+      <div><div class="section-title">🔗 Rapprochement bancaire</div><div class="section-sub">Associez chaque opération Qonto à sa facture : le règlement est enregistré automatiquement</div></div>
+      ${sure.length?`<button class="btn-add" style="background:#15803d;color:#fff" onclick="rapproAuto()">⚡ Valider ${sure.length} correspondance(s) sûre(s)</button>`:""}
+    </div>
+    <div style="padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)">
+      ${chip("arapprocher","À rapprocher",nonRap.length)}${chip("rapproches","Rapprochées",tx.filter(t=>rpEtat(t)&&rpEtat(t).type!=="ignore").length)}${chip("toutes","Toutes",tx.length)}
+    </div>
+    <div style="padding:4px 20px 14px">
+      ${L.length===0?`<div style="padding:22px 0;text-align:center;color:#94a3b8;font-size:13px">${rapproFiltre==="arapprocher"?"✓ Tout est rapproché.":"Aucune opération."}</div>`:L.map(rpLigneHTML).join("")}
+    </div>
+  </div>`;
+}
+function rpLigneHTML(t){
+  const r=rpEtat(t);
+  const sug=r?null:rpSuggestions(t)[0];
+  const debit=t.sens==="debit";
+  let action;
+  if(r&&r.type==="ignore") action=`<button class="btn-sm" onclick="rapproDefaire('${rpE(t.id)}')">Ignorée · annuler</button>`;
+  else if(r) action=`<button class="btn-sm" style="border-color:#86efac;background:#f0fdf4;color:#15803d" onclick="rapproDetail('${rpE(t.id)}')">✓ ${rpE(r.ref)}</button>`;
+  else action=`${sug?`<button class="btn-sm" style="border-color:${TH.c1}55;background:${TH.c1}12;color:${TH.c1};font-weight:700" onclick="rapproAssocier('${rpE(t.id)}','${sug.type}','${sug.id}')" title="${rpE(sug.raisons.join(", "))}">${sug.score>=100?"⚡":"?"} ${rpE(sug.ref)}${sug.tiers?" · "+rpE(sug.tiers.slice(0,18)):""}</button>`:""}
+    <button class="btn-sm" onclick="rapproChoisir('${rpE(t.id)}')">${sug?"Autre…":"Associer…"}</button>`;
+  return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+    <div style="min-width:0;flex:1 1 180px">
+      <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${rpE(t.libelle||"—")}</div>
+      <div style="font-size:11px;color:#64748b">${fDateTrans(t.date)}${t.statut?" · "+rpE(t.statut):""}${t.compte?" · "+rpE(t.compte):""}</div>
+    </div>
+    <div style="font-weight:800;font-size:13.5px;color:${debit?"#991b1b":"#15803d"};white-space:nowrap">${fMontantSigne(t)}</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${action}</div>
+  </div>`;
+}
+function rpTrouverTx(id){return ((BANQUE_DATA&&BANQUE_DATA.transactions)||[]).find(t=>String(t.id)===String(id));}
+// Enregistre le règlement dans le document et note le rapprochement
+function rapproAssocier(txId,type,docId,silencieux){
+  const t=rpTrouverTx(txId);if(!t)return false;
+  if(RAPPRO[txId]&&RAPPRO[txId].type!=="ignore"){if(!silencieux)alert("Cette opération est déjà rapprochée.");return false;}
+  const montant=Math.round(Number(t.montant)*100)/100,date=rpDate(t);
+  let doc,ref,reste;
+  if(type==="fac"){doc=FACTURES.find(x=>x.id===docId);reste=doc&&facReste(doc);}
+  else if(type==="bcc"){doc=BCCLIENTS.find(x=>x.id===docId);reste=doc&&bccReste(doc);}
+  else if(type==="ff"){doc=FACFOURN.find(x=>x.id===docId);reste=doc&&ffReste(doc);}
+  if(!doc)return false;
+  ref=doc.num;
+  if(!silencieux&&rpCents(montant)>rpCents(reste)+1&&!confirm(`Le virement (${fMoney(montant)}) dépasse le reste dû sur ${ref} (${fMoney(reste)}).\nL'associer quand même ?`))return false;
+  doc.paiements=doc.paiements||[];
+  doc.paiements.push({date,montant,mode:type==="ff"?(t.categorie&&/card|carte/i.test(t.categorie)?"CB":"Virement"):"Virement",qontoId:String(txId)});
+  if(type==="fac"){if(facEstPayee(doc))doc.statut="payee";else if(facPaye(doc)>0&&doc.statut!=="payee")doc.statut="partiel";}
+  RAPPRO[txId]={type,id:docId,ref,ts:new Date().toISOString()};
+  logActivity("Rapprochement bancaire",`${fMoney(montant)} du ${fDate(date)} → ${ref}`);
+  if(!silencieux){saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();renderNav();}
+  return true;
+}
+function rapproAuto(){
+  const credits=((BANQUE_DATA&&BANQUE_DATA.transactions)||[]).filter(t=>t.id&&t.sens!=="debit"&&!rpEtat(t)&&t.statut!=="refusée");
+  const plan=credits.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>o.s&&o.s.score>=100&&o.s.raisons.includes("montant")||o.s&&o.s.score>=160);
+  // un document ne reçoit qu'un seul virement automatique
+  const pris=new Set();const ok=plan.filter(o=>{const k=o.s.type+o.s.id;if(pris.has(k))return false;pris.add(k);return true;});
+  if(!ok.length)return;
+  if(!confirm(`Valider ces ${ok.length} rapprochement(s) ?\n\n`+ok.map(o=>`• ${fMoney(o.t.montant)} « ${String(o.t.libelle).slice(0,40)} » → ${o.s.ref}`).join("\n")))return;
+  let n=0;ok.forEach(o=>{if(rapproAssocier(o.t.id,o.s.type,o.s.id,true))n++;});
+  saveData();document.getElementById("content").innerHTML=renderBanque();renderNav();
+  alert(`✅ ${n} règlement(s) enregistré(s).`);
+}
+function rapproChoisir(txId){
+  const t=rpTrouverTx(txId);if(!t)return;
+  const sugg=rpSuggestions(t);
+  const tous=rpCandidats(t).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const ids=new Set(sugg.map(s=>s.type+s.id));
+  const ligne=d=>`<button onclick="rapproAssocier('${rpE(txId)}','${d.type}','${d.id}')" style="display:flex;width:100%;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:10px;border:1.5px solid ${d.score>=100?TH.c1+"66":"#e2e8f0"};background:#fff;cursor:pointer;text-align:left;font-family:'Inter',sans-serif">
+      <span style="font-size:16px">${d.type==="ff"?"📥":d.type==="bcc"?"📋":"🧾"}</span>
+      <span style="flex:1;min-width:0"><span style="font-weight:700;font-size:13px;color:${TH.c1}">${rpE(d.ref)}</span> <span style="font-size:12.5px;color:#1A2118">${rpE(d.tiers)}</span>
+        ${d.raisons&&d.raisons.length?`<br/><span style="font-size:11px;color:#15803d">Correspond : ${rpE(d.raisons.join(", "))}</span>`:""}</span>
+      <span style="font-weight:700;font-size:13px;white-space:nowrap">reste ${fMoney(d.reste)}</span></button>`;
+  showModal(`${t.sens==="debit"?"Débit":"Crédit"} de ${fMontantSigne(t)}`,`
+    <div style="background:#F7F4ED;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px"><strong>${rpE(t.libelle)}</strong><br/><span style="color:#64748b">${fDateTrans(t.date)}${t.compte?" · "+rpE(t.compte):""}</span></div>
+    ${sugg.length?`<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Suggestions</div>${sugg.slice(0,5).map(ligne).join("")}`:""}
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">${t.sens==="debit"?"Factures fournisseurs à payer":"Factures et acomptes clients à encaisser"}</div>
+    <input placeholder="🔍 Filtrer…" oninput="const q=this.value.toLowerCase();document.querySelectorAll('#rp-liste>button').forEach(b=>b.style.display=b.textContent.toLowerCase().includes(q)?'flex':'none')" style="width:100%;padding:9px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px;margin-bottom:8px;box-sizing:border-box"/>
+    <div id="rp-liste" style="max-height:40vh;overflow-y:auto">${tous.filter(d=>!ids.has(d.type+d.id)).map(d=>ligne({...d,raisons:[]})).join("")||`<div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px">Aucun document en attente de règlement.</div>`}</div>`,
+    `<button class="btn-cancel" style="margin-right:auto" onclick="rapproIgnorer('${rpE(txId)}')">Ignorer cette opération</button>
+     <button class="btn-cancel" onclick="closeModal()">Fermer</button>`);
+}
+function rapproIgnorer(txId){
+  RAPPRO[txId]={type:"ignore",ts:new Date().toISOString()};
+  saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();
+}
+function rapproDetail(txId){
+  const t=rpTrouverTx(txId),r=RAPPRO[txId];if(!t||!r)return;
+  showModal("Opération rapprochée",`
+    <div style="background:#F7F4ED;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px"><strong>${rpE(t.libelle)}</strong><br/><span style="color:#64748b">${fDateTrans(t.date)} · ${fMontantSigne(t)}</span></div>
+    <div style="font-size:14px">Associée à <strong style="color:${TH.c1}">${rpE(r.ref)}</strong> le ${fDate((r.ts||"").slice(0,10))}.</div>
+    <div style="font-size:12px;color:#64748b;margin-top:6px">Dissocier supprime aussi le règlement enregistré sur ce document.</div>`,
+    `<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca;margin-right:auto" onclick="rapproDefaire('${rpE(txId)}')">Dissocier</button>
+     <button class="btn-cancel" onclick="closeModal()">Fermer</button>
+     ${r.type==="fac"?`<button class="btn-save" style="background:${TH.c1}" onclick="modalPaiement('${r.id}')">Voir la facture</button>`:r.type==="ff"?`<button class="btn-save" style="background:${TH.c1}" onclick="modalPaiementFF('${r.id}')">Voir la facture</button>`:""}`);
+}
+function rapproDefaire(txId){
+  const r=RAPPRO[txId];if(!r)return;
+  if(r.type!=="ignore"){
+    const doc=r.type==="fac"?FACTURES.find(x=>x.id===r.id):r.type==="bcc"?BCCLIENTS.find(x=>x.id===r.id):FACFOURN.find(x=>x.id===r.id);
+    if(doc&&doc.paiements){doc.paiements=doc.paiements.filter(p=>String(p.qontoId||"")!==String(txId));
+      if(r.type==="fac"&&!facEstPayee(doc)&&doc.statut==="payee")doc.statut=facPaye(doc)>0?"partiel":"envoyee";}
+    logActivity("Rapprochement annulé",r.ref||"");
+  }
+  delete RAPPRO[txId];
+  saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();renderNav();
 }
 
 function renderAdmin(){
