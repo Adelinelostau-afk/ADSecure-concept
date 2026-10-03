@@ -1704,8 +1704,16 @@ let cliTri="nom";           // nom | ca | date | trans
 
 // CA réel d'un client, calculé sur ses factures et devis acceptés
 function cliCA(c){
-  const facs=FACTURES.filter(f=>f.clientId===c.id).reduce((s,f)=>s+(f.ttc||devisTTC(f)||0),0);
-  return facs>0?facs:(c.ca||0);
+  const facs=FACTURES.filter(f=>(f.clientId===c.id||(!f.clientId&&f.client&&f.client===c.nom))&&!["brouillon","annulee"].includes(f.statut)).reduce((s,f)=>s+facTTC(f),0);
+  return facs>0?Math.round(facs*100)/100:(c.ca||0);
+}
+// Devis acceptés (y compris passés en bon de commande) et commandes en cours non facturées
+function cliDevisAcceptes(c){ return DEVIS.filter(d=>d.clientId===c.id&&(["accepte","transforme"].includes(d.statut)||BCCLIENTS.some(b=>b.devisId===d.id))); }
+function cliEnCommande(c){ return Math.round(BCCLIENTS.filter(b=>b.clientId===c.id&&b.statut!=="facture").reduce((s,b)=>s+devisTTC(b),0)*100)/100; }
+function cliDerniereCommande(c){
+  const d=[c.dernCmd||"",...BCCLIENTS.filter(b=>b.clientId===c.id).map(b=>b.date||""),...cliDevisAcceptes(c).map(x=>x.date||""),
+    ...FACTURES.filter(f=>f.clientId===c.id).map(f=>facDate(f)||"")].filter(Boolean).sort();
+  return d.pop()||"";
 }
 function cliDernierContact(c){
   const tr=transDuClient(c.id);
@@ -6819,19 +6827,21 @@ function glcSynthese(c){
   const echu=glcR(enRetard.reduce((s,f)=>s+facReste(f),0));
   const nbRetard=enRetard.length;
   // Devis acceptés pas encore transformés en BC ni facturés = carnet de commandes à venir
-  const aVenir=glcR(DEVIS.filter(d=>d.clientId===c.id&&d.statut==="accepte"&&!BCCLIENTS.some(b=>b.devisId===d.id)).reduce((s,d)=>s+devisTTC(d),0)
-    +glcBCClient(c).filter(b=>b.statut!=="facture").reduce((s,b)=>s+devisTTC(b),0));
-  return {E,debit,credit,solde,echu,nbRetard,aVenir};
+  const aVenir=glcR(DEVIS.filter(d=>d.clientId===c.id&&d.statut==="accepte"&&!BCCLIENTS.some(b=>b.devisId===d.id)).reduce((s,d)=>s+glcR(devisTTC(d)),0)
+    +glcBCClient(c).filter(b=>b.statut!=="facture").reduce((s,b)=>s+glcR(devisTTC(b)),0));
+  const acomptes=glcR(E.filter(e=>e.type==="acompte").reduce((s,e)=>s+e.credit,0));
+  return {E,debit,credit,solde,echu,nbRetard,aVenir,acomptes};
 }
-function glcEtat(solde){
+function glcEtat(solde,acomptes){
   if(solde>0.004) return {lbl:"Débiteur",bg:"#fee2e2",col:"#991b1b",txt:"Le client vous doit"};
+  if(solde<-0.004&&acomptes>0.004&&Math.abs(solde)<=acomptes+0.004) return {lbl:"Acompte reçu",bg:"#e8f4f8",col:"#3286A0",txt:"À déduire de la future facture"};
   if(solde<-0.004) return {lbl:"Créditeur",bg:"#e8f4f8",col:"#3286A0",txt:"Avance du client"};
   return {lbl:"Soldé",bg:"#dcfce7",col:"#15803d",txt:"Compte à jour"};
 }
 
 function renderGrandLivreClient(c){
   const S=glcSynthese(c);
-  const et=glcEtat(S.solde);
+  const et=glcEtat(S.solde,S.acomptes);
   const per=glcFiltre[c.id]||"tout";
   const t=getToday();
   const debut=per==="annee"?t.slice(0,4)+"-01-01":per==="12m"?addDays(t,-365):"";
@@ -6869,7 +6879,7 @@ function renderGrandLivreClient(c){
       ${S.aVenir>0?`<div style="background:#F7F4ED;border-radius:12px;padding:12px 14px">
         <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b">À facturer</div>
         <div style="font-size:17px;font-weight:800;color:#8a6d3b;margin-top:2px">${glcEur(S.aVenir)}</div>
-        <div style="font-size:11px;color:#64748b">devis acceptés / BC en cours</div></div>`:""}
+        <div style="font-size:11px;color:#64748b">${S.acomptes>0?`dont ${glcEur(S.acomptes)} d'acompte déjà reçu`:"devis acceptés / BC en cours"}</div></div>`:""}
     </div>
     <div style="padding:8px 18px;display:flex;gap:6px;flex-wrap:wrap">${chip("tout","Tout")}${chip("annee","Cette année")}${chip("12m","12 derniers mois")}</div>
     ${S.E.length===0?`<div style="padding:26px;text-align:center;color:${TH.txt}66;font-size:13px">Aucune facture ni règlement pour ce client.</div>`:`
@@ -6927,7 +6937,7 @@ function renderGlcCorrespondances(c){
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:6px 0 8px">Correspondance des documents</div>
     ${chaines.sort((a,b)=>((b.f&&facDate(b.f))||(b.bc&&b.bc.date)||(b.d&&b.d.date)||"").localeCompare((a.f&&facDate(a.f))||(a.bc&&a.bc.date)||(a.d&&a.d.date)||"")).map(({d,bc,f})=>{
       const payeBC=bc&&bc.statut!=="facture"?bccPaye(bc):0;
-      const regle=f?(f.statut==="payee"?Math.max(facPaye(f),facTTC(f)):facPaye(f)):payeBC, du=f?facTTC(f):(bc?devisTTC(bc):(d?devisTTC(d):0));
+      const regle=glcR(f?(f.statut==="payee"?Math.max(facPaye(f),facTTC(f)):facPaye(f)):payeBC), du=glcR(f?facTTC(f):(bc?devisTTC(bc):(d?devisTTC(d):0)));
       const reste=glcR(Math.max(0,du-regle));
       const fst=f?facStatutReel(f):"";
       return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:stretch">
@@ -6952,7 +6962,7 @@ function glcExportCSV(clientId){
 }
 function glcImprimer(clientId){
   const c=CLIENTS.find(x=>x.id===clientId);if(!c)return;
-  const S=glcSynthese(c),et=glcEtat(S.solde),logoSrc=thLogo();
+  const S=glcSynthese(c),et=glcEtat(S.solde,S.acomptes),logoSrc=thLogo();
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relevé de compte — ${glcEsc(c.nom)}</title><style>
     body{font-family:'Inter',Arial,sans-serif;color:#1A2118;padding:36px 42px;font-size:12px}
     .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${TH.c1};padding-bottom:16px;margin-bottom:22px}
@@ -6974,7 +6984,7 @@ function glcImprimer(clientId){
       ${S.E.map(e=>`<tr><td>${fDate(e.date)} ${(e.date||"").slice(0,4)}</td><td>${glcEsc(e.piece)}</td><td>${glcEsc(e.libelle)}</td><td class="r">${e.debit?glcEur(e.debit):""}</td><td class="r">${e.credit?glcEur(e.credit):""}</td><td class="r">${glcEur(e.solde)}</td></tr>`).join("")}
       <tr class="tot"><td colspan="3">Totaux</td><td class="r">${glcEur(S.debit)}</td><td class="r">${glcEur(S.credit)}</td><td class="r">${glcEur(S.solde)}</td></tr>
     </tbody></table>
-    <div class="solde">${S.solde>0.004?"Reste dû par le client : ":S.solde<-0.004?"Avance en faveur du client : ":"Compte soldé : "}${glcEur(Math.abs(S.solde))}</div>
+    <div class="solde">${S.solde>0.004?"Reste dû par le client : ":S.solde<-0.004?(et.lbl==="Acompte reçu"?"Acompte reçu, à déduire de la facture : ":"Avance en faveur du client : "):"Compte soldé : "}${glcEur(Math.abs(S.solde))}</div>
     ${S.echu>0?`<p style="color:#991b1b;margin-top:12px">Dont ${glcEur(S.echu)} échu(s) et non réglé(s) à ce jour.</p>`:""}
     <div class="foot">${glcEsc(TH.nom)} ${glcEsc(TH.sous||"")}${TH.contratSiren?" · SIREN "+glcEsc(TH.contratSiren):""} — document généré le ${fDate(getToday())} ${getToday().slice(0,4)}</div>
     <script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script></body></html>`;
@@ -7546,7 +7556,9 @@ function renderClientFiche(){
   if(!c) return `<div style="padding:40px;text-align:center;color:#64748b">Client introuvable</div>`;
   const devisClient=DEVIS.filter(d=>d.clientId===c.id).sort((a,b)=>b.date.localeCompare(a.date));
   const [stBg,stCol,stLbl]=ST_CLI[c.status]||["#f1f5f9","#64748b","—"];
-  const caDevis=devisClient.filter(d=>d.statut==="accepte").reduce((s,d)=>s+devisTTC(d),0);
+  const accClient=cliDevisAcceptes(c);
+  const caDevis=accClient.reduce((s,d)=>s+devisTTC(d),0);
+  const caFiche=cliCA(c), enCmd=cliEnCommande(c), dernCmdFiche=cliDerniereCommande(c);
 
   return `
     <!-- Header fiche -->
@@ -7562,18 +7574,19 @@ function renderClientFiche(){
       </div>
       <div style="text-align:right">
         <div style="margin-bottom:8px">${badge(stLbl,stBg,stCol)}</div>
-        <div style="font-size:11px;color:${TH.sand}77;margin-bottom:3px">CA total</div>
-        <div style="font-size:24px;font-weight:700">${fMoney(c.ca)}</div>
+        <div style="font-size:11px;color:${TH.sand}77;margin-bottom:3px">CA facturé</div>
+        <div style="font-size:24px;font-weight:700">${fMoney(caFiche)}</div>
+        ${enCmd>0?`<div style="font-size:12px;color:${TH.sand}CC">+ ${fMoney(enCmd)} en commande</div>`:""}
         <div style="font-size:11px;color:${TH.sand}77;margin-top:8px">Dernière commande</div>
-        <div style="font-size:13px">${fDate(c.dernCmd)}</div>
+        <div style="font-size:13px">${dernCmdFiche?fDate(dernCmdFiche)+" "+dernCmdFiche.slice(0,4):"—"}</div>
       </div>
     </div>
 
     <!-- KPIs -->
     <div class="kpi-grid" style="margin-bottom:20px">
       ${kpi("Devis total",devisClient.length,TH.c1)}
-      ${kpi("Acceptés",devisClient.filter(d=>d.statut==="accepte").length,"#15803d")}
-      ${kpi("En attente",devisClient.filter(d=>d.statut==="envoye").length,"#b45309")}
+      ${kpi("Acceptés",accClient.length,"#15803d")}
+      ${kpi("En attente",devisClient.filter(d=>["brouillon","envoye"].includes(d.statut)&&!accClient.includes(d)).length,"#b45309")}
       ${kpi("CA devis acceptés",fMoney(caDevis),TH.c1,true)}
     </div>
 
@@ -7590,8 +7603,8 @@ function renderClientFiche(){
             ["📞 Téléphone",c.tel||"—"],
             ["✉️ Email",c.email||"—"],
             ["🏷️ Catégorie",c.cat],
-            ["📅 Dernière commande",fDate(c.dernCmd)],
-            ["💰 CA total",fMoney(c.ca)],
+            ["📅 Dernière commande",dernCmdFiche?fDate(dernCmdFiche)+" "+dernCmdFiche.slice(0,4):"—"],
+            ["💰 CA facturé",fMoney(caFiche)+(enCmd>0?` <span style="font-weight:400;color:#64748b">(+ ${fMoney(enCmd)} en commande)</span>`:"")],
           ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding-bottom:10px;border-bottom:1px solid #f1f5f9">
             <span style="color:${TH.txt}77">${l}</span>
             <span style="font-weight:600;color:${TH.txt}">${v}</span>
@@ -7624,7 +7637,7 @@ function renderClientFiche(){
     <!-- Devis -->
     <div class="section-card" style="background:${TH.card}">
       <div class="section-head">
-        <div><div class="section-title" style="color:${TH.txt}">Devis</div><div class="section-sub">${devisClient.length} devis · ${devisClient.filter(d=>d.statut==="accepte").length} accepté(s)</div></div>
+        <div><div class="section-title" style="color:${TH.txt}">Devis</div><div class="section-sub">${devisClient.length} devis · ${accClient.length} accepté(s)</div></div>
         <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalDevis('','${c.id}')">＋ Nouveau devis</button>
       </div>
       ${devisClient.length===0?`<div style="padding:32px;text-align:center;color:${TH.txt}66;font-size:13px">Aucun devis pour ce client</div>`:""}
