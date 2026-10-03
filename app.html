@@ -1114,9 +1114,14 @@ const DEF_TH={...TH};
 // Profil AD Secure Concept : complète les réglages de ce compte s'il en manque (aucun effet sur les autres entreprises)
 const ADS_TH={nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
   contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",
-  sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA · Domotique"}};
+  sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"}};
 function isADS(t){return /^AD\s*Secure/i.test((t&&t.nom)||"");}
-function mergeTH(saved){return Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);}
+function mergeTH(saved){
+  const t=Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);
+  // Ancienne accroche de signature : « Domotique » retiré
+  if(t.sigMail&&t.sigMail.slogan==="Vidéosurveillance · IA · Domotique") t.sigMail={...t.sigMail,slogan:"Vidéosurveillance · IA"};
+  return t;
+}
 function resetThemeColors(){const d=mergeTH({nom:TH.nom});["c1","c2","sidebar","bg","card","txt","sand","police","logoF"].forEach(k=>TH[k]=d[k]);applyTheme();renderNav();renderPanel();}
 function thLogo(){return TH.logo||(isADS(TH)?"logo.png":"");}
 const DEF_RUBS=JSON.parse(JSON.stringify(RUBS));
