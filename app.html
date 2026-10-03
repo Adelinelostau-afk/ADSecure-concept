@@ -1107,6 +1107,7 @@ let RUBS=[
   {id:"admin",    label:"Administration",   icon:"🗂️",actif:true, ordre:6},
   {id:"factures", label:"Factures",         icon:"🧾",actif:true, ordre:6.5},
   {id:"banque",   label:"Banque",           icon:"🏦",actif:true, ordre:6.8},
+  {id:"caisse",   label:"Caisse",           icon:"💶",actif:true, ordre:6.9},
   {id:"stats",    label:"Statistiques",     icon:"📊", actif:true, ordre:7},
 ];
 const DEF_TH={...TH};
@@ -1200,7 +1201,7 @@ function saveDataLocal(){
 function getDataObject(){
   return {
     CLIENTS, EVENTS, STOCK, COMMANDES, FACTURES, FACFOURN, TACHES, PROSPECTS, DEVIS, BCCLIENTS, DOCSHIST, CATALOGUE, CAT_PRODUITS, CAT_STOCK, UNITES, TRANSMISSIONS,
-    TH, RUBS, pipeNextId, JOURNAL
+    TH, RUBS, pipeNextId, JOURNAL, CAISSE
   };
 }
 function applyDataObject(d){
@@ -1225,6 +1226,7 @@ function applyDataObject(d){
   if(d.RUBS) RUBS=mergeRubs(d.RUBS);
   if(typeof d.pipeNextId==="number") pipeNextId=d.pipeNextId;
   if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
+  if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
 }
 
 function setSyncBadge(status){
@@ -1424,6 +1426,8 @@ function loadData(){
     if(d.RUBS) RUBS=mergeRubs(d.RUBS);
     if(typeof d.pipeNextId==="number") pipeNextId=d.pipeNextId;
     if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
+    if(d.FACFOURN && Array.isArray(d.FACFOURN)) FACFOURN=d.FACFOURN;
+    if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
   }catch(e){ console.warn("Chargement impossible:", e); }
 }
 
@@ -3014,6 +3018,468 @@ function renderBanque(){
         </div>`).join("")}
       </div>
     </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// ── CAISSE : journal de toutes les transactions + comptage des espèces ──
+// ══════════════════════════════════════════════════════════
+// Le journal réunit automatiquement les règlements déjà saisis dans l'appli
+// (factures clients, bons de commande non facturés, factures fournisseurs)
+// et les mouvements saisis à la main dans la caisse (CAISSE.mouvements).
+// Les comptages d'espèces (CAISSE.comptages) comparent le contenu réel de la
+// caisse au solde espèces théorique calculé à partir du journal.
+let CAISSE={mouvements:[],comptages:[]};
+let caisseOnglet="journal";
+let caisseFiltre={periode:"mois",du:"",au:"",sens:"tous",mode:"tous",q:""};
+const CAISSE_CAT_ENTREE=["Vente comptoir","Encaissement divers","Apport de fonds","Retrait banque vers caisse","Remboursement reçu","Autre recette"];
+const CAISSE_CAT_SORTIE=["Achat matériel","Fournitures","Carburant / déplacement","Frais divers","Dépôt en banque","Remboursement versé","Autre dépense"];
+const CAISSE_BILLETS=[50000,20000,10000,5000,2000,1000,500];        // en centimes
+const CAISSE_PIECES=[200,100,50,20,10,5,2,1];
+const CAISSE_TYPES_CPT={ouverture:"Ouverture",cloture:"Clôture",controle:"Contrôle"};
+
+function caisseNorm(){
+  if(!CAISSE||typeof CAISSE!=="object") CAISSE={mouvements:[],comptages:[]};
+  if(!Array.isArray(CAISSE.mouvements)) CAISSE.mouvements=[];
+  if(!Array.isArray(CAISSE.comptages)) CAISSE.comptages=[];
+}
+function cEur(n){return (Number(n)||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});}
+function cEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function cCts(n){return Math.round((Number(n)||0)*100);}
+function cDateLong(s){return s?new Date(s+"T00:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}):"—";}
+function cCoupureLbl(c){return c>=100?(c/100)+" €":c+" c";}
+
+// Toutes les transactions de l'entreprise, triées de la plus récente à la plus ancienne
+function caisseLignes(){
+  caisseNorm();
+  const L=[];
+  FACTURES.forEach(f=>(f.paiements||[]).forEach((p,i)=>L.push({
+    id:"fac-"+f.id+"-"+i,date:p.date||f.date||"",sens:"entree",montant:Number(p.montant)||0,mode:p.mode||"Autre",
+    cat:"Encaissement client",libelle:"Règlement facture "+(f.num||""),tiers:f.client||"",source:"Facture",ref:f.num||"",auto:true,srcType:"fac",srcId:f.id})));
+  BCCLIENTS.filter(b=>b.statut!=="facture").forEach(b=>{
+    const cli=CLIENTS.find(c=>c.id===b.clientId);
+    (b.paiements||[]).forEach((p,i)=>L.push({
+      id:"bcc-"+b.id+"-"+i,date:p.date||b.date||"",sens:"entree",montant:Number(p.montant)||0,mode:p.mode||"Autre",
+      cat:"Acompte client",libelle:"Règlement bon de commande "+(b.num||""),tiers:cli?cli.nom:(b.client||""),source:"Bon de commande",ref:b.num||"",auto:true,srcType:"bcc",srcId:b.id}));
+  });
+  FACFOURN.forEach(f=>(f.paiements||[]).forEach((p,i)=>L.push({
+    id:"ff-"+f.id+"-"+i,date:p.date||f.date||"",sens:"sortie",montant:Number(p.montant)||0,mode:p.mode||"Autre",
+    cat:"Achat fournisseur",libelle:"Règlement facture fournisseur "+(f.numFour||f.num||""),tiers:f.four||"",source:"Facture fournisseur",ref:f.num||"",auto:true,srcType:"ff",srcId:f.id})));
+  CAISSE.mouvements.forEach(m=>L.push({...m,montant:Number(m.montant)||0,source:"Caisse",ref:m.ref||"",auto:false}));
+  return L.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||"").localeCompare(a.ts||""));
+}
+// Solde espèces théorique (toutes dates confondues, ou jusqu'à une date incluse)
+function caisseSoldeEspeces(jusqua){
+  return caisseLignes().filter(l=>l.mode==="Espèces"&&(!jusqua||(l.date||"")<=jusqua))
+    .reduce((s,l)=>s+(l.sens==="entree"?cCts(l.montant):-cCts(l.montant)),0)/100;
+}
+function caisseBornes(){
+  const t=getToday(),f=caisseFiltre,d=new Date(t+"T00:00:00");
+  const iso=x=>x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");
+  if(f.periode==="jour") return [t,t];
+  if(f.periode==="semaine") return [weekStart(0),t];
+  if(f.periode==="mois") return [t.slice(0,7)+"-01",t];
+  if(f.periode==="moisprec"){const a=new Date(d.getFullYear(),d.getMonth()-1,1),b=new Date(d.getFullYear(),d.getMonth(),0);return [iso(a),iso(b)];}
+  if(f.periode==="annee") return [t.slice(0,4)+"-01-01",t];
+  if(f.periode==="perso") return [f.du||"0000-01-01",f.au||"9999-12-31"];
+  return ["0000-01-01","9999-12-31"];
+}
+function caisseLibPeriode(){
+  const f=caisseFiltre;
+  return {jour:"aujourd'hui",semaine:"cette semaine",mois:"ce mois-ci",moisprec:"le mois dernier",annee:"cette année",tout:"depuis le début",
+    perso:(f.du?"du "+cDateLong(f.du):"")+(f.au?" au "+cDateLong(f.au):"")||"période choisie"}[f.periode]||"";
+}
+function caisseFiltrees(){
+  const [du,au]=caisseBornes(),f=caisseFiltre,q=(f.q||"").trim().toLowerCase();
+  return caisseLignes().filter(l=>{
+    if((l.date||"")<du||(l.date||"")>au) return false;
+    if(f.sens!=="tous"&&l.sens!==f.sens) return false;
+    if(f.mode!=="tous"&&l.mode!==f.mode) return false;
+    if(q&&![l.libelle,l.tiers,l.cat,l.ref,l.mode,l.note].join(" ").toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+// ── Page ──────────────────────────────────────────────────
+function renderCaisse(){
+  caisseNorm();
+  const esp=caisseSoldeEspeces();
+  const dernier=[...CAISSE.comptages].sort((a,b)=>(b.ts||"").localeCompare(a.ts||""))[0];
+  const tab=(id,lbl)=>`<button onclick="caisseOnglet='${id}';renderPage()" style="padding:9px 16px;border-radius:999px;border:1.5px solid ${caisseOnglet===id?TH.c1:"#e2e8f0"};background:${caisseOnglet===id?TH.c1:"#fff"};color:${caisseOnglet===id?"#fff":"#475569"};cursor:pointer;font-size:13px;font-weight:700;font-family:'Inter',sans-serif">${lbl}</button>`;
+  return `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      ${tab("journal","📒 Journal des transactions")}${tab("comptage","🪙 Comptage des espèces")}
+      <div style="flex:1"></div>
+      <button class="btn-add" style="background:#15803d;color:#fff" onclick="modalCaisseMvt(null,'entree')">＋ Entrée</button>
+      <button class="btn-add" style="background:#991b1b;color:#fff" onclick="modalCaisseMvt(null,'sortie')">－ Sortie</button>
+    </div>
+    ${caisseOnglet==="comptage"?renderCaisseComptage(esp,dernier):renderCaisseJournal(esp,dernier)}`;
+}
+
+function renderCaisseJournal(esp,dernier){
+  const lignes=caisseFiltrees();
+  const ent=lignes.filter(l=>l.sens==="entree").reduce((s,l)=>s+cCts(l.montant),0)/100;
+  const sor=lignes.filter(l=>l.sens==="sortie").reduce((s,l)=>s+cCts(l.montant),0)/100;
+  const modes=[...new Set([...MODES_PAIEMENT,...caisseLignes().map(l=>l.mode)])].filter(Boolean);
+  const f=caisseFiltre;
+  const sel=(id,val,opts)=>`<select onchange="caisseFiltre.${id}=this.value;renderPage()" style="padding:8px 10px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px;background:#fff;font-family:'Inter',sans-serif">${opts.map(([v,l])=>`<option value="${v}" ${v===val?"selected":""}>${l}</option>`).join("")}</select>`;
+  // Répartition par mode de paiement sur la période
+  const parMode={};lignes.forEach(l=>{const k=l.mode||"Autre";parMode[k]=(parMode[k]||0)+(l.sens==="entree"?cCts(l.montant):-cCts(l.montant));});
+  // Regroupement par jour
+  const jours={};lignes.forEach(l=>{(jours[l.date||"—"]=jours[l.date||"—"]||[]).push(l);});
+  const listeJours=Object.keys(jours).sort((a,b)=>b.localeCompare(a));
+  return `
+    <div class="kpi-grid">
+      ${kpi("Entrées "+caisseLibPeriode(),cEur(ent),"#15803d",true)}
+      ${kpi("Sorties "+caisseLibPeriode(),cEur(sor),"#991b1b",true)}
+      ${kpi("Solde de la période",cEur(ent-sor),ent-sor>=0?TH.c1:"#991b1b",true)}
+      ${kpi("Espèces en caisse (théorique)",cEur(esp),"#8a6d3b",true)}
+    </div>
+    ${dernier?`<div style="font-size:12px;color:#64748b;margin:-10px 0 16px">Dernier comptage : ${CAISSE_TYPES_CPT[dernier.type]||""} du ${cDateLong(dernier.date)} — ${cEur(dernier.total)}${Math.abs(dernier.ecart||0)>=0.005?` · écart ${dernier.ecart>0?"+":""}${cEur(dernier.ecart)}`:" · sans écart"}</div>`:""}
+    <div class="section-card">
+      <div class="section-head">
+        <div><div class="section-title">📒 Journal de caisse</div><div class="section-sub">${lignes.length} transaction(s) ${caisseLibPeriode()}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="caisseExportCSV()">⬇️ Export CSV</button>
+          <button class="btn-sm" onclick="caisseImprimerJournal()">🖨️ Imprimer / PDF</button>
+        </div>
+      </div>
+      <div style="padding:12px 20px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);align-items:center">
+        ${sel("periode",f.periode,[["jour","Aujourd'hui"],["semaine","Cette semaine"],["mois","Ce mois-ci"],["moisprec","Mois dernier"],["annee","Cette année"],["tout","Tout"],["perso","Dates au choix…"]])}
+        ${f.periode==="perso"?`<input type="date" value="${f.du}" onchange="caisseFiltre.du=this.value;renderPage()" style="padding:7px 9px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px"/><input type="date" value="${f.au}" onchange="caisseFiltre.au=this.value;renderPage()" style="padding:7px 9px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px"/>`:""}
+        ${sel("sens",f.sens,[["tous","Entrées et sorties"],["entree","Entrées"],["sortie","Sorties"]])}
+        ${sel("mode",f.mode,[["tous","Tous les modes"],...modes.map(m=>[m,m])])}
+        <input id="caisse-q" placeholder="🔍 Rechercher…" value="${cEsc(f.q)}" onchange="caisseFiltre.q=this.value;renderPage()" style="flex:1;min-width:140px;padding:8px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px;font-family:'Inter',sans-serif"/>
+      </div>
+      ${Object.keys(parMode).length?`<div style="padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)">
+        ${Object.entries(parMode).map(([m,v])=>`<span style="font-size:11.5px;padding:4px 10px;border-radius:999px;background:#F7F4ED;color:#475569"><strong>${cEsc(m)}</strong> ${v>=0?"+":""}${cEur(v/100)}</span>`).join("")}
+      </div>`:""}
+      <div style="padding:4px 20px 14px">
+        ${listeJours.length===0?`<div style="padding:30px 0;text-align:center;color:#94a3b8;font-size:13px">Aucune transaction sur cette période.</div>`:
+        listeJours.map(j=>{
+          const tot=jours[j].reduce((s,l)=>s+(l.sens==="entree"?cCts(l.montant):-cCts(l.montant)),0)/100;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8">
+              <span>${j==="—"?"Sans date":new Date(j+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>
+              <span style="color:${tot>=0?"#15803d":"#991b1b"}">${tot>=0?"+":""}${cEur(tot)}</span></div>
+            ${jours[j].map(caisseLigneHTML).join("")}`;
+        }).join("")}
+      </div>
+    </div>`;
+}
+function caisseLigneHTML(l){
+  const ent=l.sens==="entree";
+  const clic=l.auto?`caisseOuvrirSource('${l.srcType}','${l.srcId}')`:`modalCaisseMvt('${l.id}')`;
+  return `<div onclick="${clic}" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer">
+    <span style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;background:${ent?"#dcfce7":"#fee2e2"}">${l.mode==="Espèces"?"💶":(ent?"↘️":"↗️")}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cEsc(l.libelle||l.cat||"—")}${l.piece?" 📎":""}</div>
+      <div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cEsc(l.mode)} · ${cEsc(l.cat||"")}${l.tiers?" · "+cEsc(l.tiers):""}${l.auto?` · <span style="color:${TH.c1}">${cEsc(l.source)}</span>`:""}</div>
+    </div>
+    <div style="font-weight:800;font-size:14px;color:${ent?"#15803d":"#991b1b"};white-space:nowrap">${ent?"+":"−"}${cEur(l.montant)}</div>
+  </div>`;
+}
+function caisseOuvrirSource(type,id){
+  if(type==="fac") modalPaiement(id);
+  else if(type==="bcc") modalPaiementBCC(id);
+  else if(type==="ff") modalPaiementFF(id);
+}
+
+// ── Saisie d'un mouvement manuel ──────────────────────────
+function modalCaisseMvt(id,sens){
+  caisseNorm();
+  const m=id?CAISSE.mouvements.find(x=>x.id===id):null;
+  const s=m?m.sens:(sens||"entree");
+  const cats=s==="entree"?CAISSE_CAT_ENTREE:CAISSE_CAT_SORTIE;
+  const mode=m?m.mode:"Espèces";
+  showModal(m?"Modifier le mouvement":(s==="entree"?"Nouvelle entrée de caisse":"Nouvelle sortie de caisse"),`
+    <input type="hidden" id="cm-sens" value="${s}"/>
+    <div class="field-row">
+      <div class="field"><label>Montant (€)</label><input type="text" id="cm-montant" inputmode="decimal" autocomplete="off" value="${m?String(m.montant).replace(".",","):""}" placeholder="0,00"/></div>
+      <div class="field"><label>Date</label><input type="date" id="cm-date" value="${m?m.date:getToday()}"/></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Mode de paiement</label><select id="cm-mode">${MODES_PAIEMENT.map(x=>`<option ${x===mode?"selected":""}>${x}</option>`).join("")}</select></div>
+      <div class="field"><label>Catégorie</label><select id="cm-cat">${[...cats,...(m&&!cats.includes(m.cat)?[m.cat]:[])].map(x=>`<option ${m&&x===m.cat?"selected":""}>${cEsc(x)}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label>Libellé</label><input id="cm-lib" value="${cEsc(m?m.libelle:"")}" placeholder="${s==="entree"?"Ex : vente câble au comptoir":"Ex : achat de chevilles chez Mr Bricolage"}"/></div>
+    <div class="field-row">
+      <div class="field"><label>${s==="entree"?"Client / payeur":"Fournisseur / bénéficiaire"} (optionnel)</label><input id="cm-tiers" list="cm-tiers-list" value="${cEsc(m?m.tiers:"")}"/>
+        <datalist id="cm-tiers-list">${(s==="entree"?CLIENTS.map(c=>c.nom):FOURNISSEURS.map(x=>x.nom)).map(n=>`<option value="${cEsc(n)}">`).join("")}</datalist></div>
+      <div class="field"><label>N° de pièce (optionnel)</label><input id="cm-ref" value="${cEsc(m?m.ref:"")}" placeholder="Ex : ticket 4521"/></div>
+    </div>
+    <div class="field"><label>Note (optionnel)</label><input id="cm-note" value="${cEsc(m?m.note:"")}"/></div>
+    <div class="field"><label>Justificatif (photo du ticket ou PDF, ${DOCS_MAX_MO} Mo max)</label>
+      ${m&&m.piece?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px"><span>📎 ${cEsc(m.piece.nom)}</span>
+        <button type="button" class="btn-sm" onclick="caisseVoirPiece('${m.id}')">Voir</button></div>`:""}
+      <input type="file" id="cm-file" accept="application/pdf,image/*"/></div>
+    ${m&&m.comptageId?`<div style="font-size:12px;color:#8a6d3b;background:#DED3BC55;padding:8px 12px;border-radius:9px">Ajustement créé automatiquement par un comptage de caisse.</div>`:""}
+    <div id="cm-msg" style="display:none;margin-top:12px;padding:10px 12px;border-radius:9px;font-size:13px"></div>`,
+    `${m?`<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca" onclick="supprCaisseMvt('${m.id}')">🗑 Supprimer</button>`:""}
+     <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+     <button class="btn-save" id="cm-btn" style="background:${s==="entree"?"#15803d":"#991b1b"}" onclick="saveCaisseMvt(${m?`'${m.id}'`:"null"})">✓ Enregistrer</button>`);
+  setTimeout(()=>{const i=document.getElementById("cm-montant");if(i&&!m)i.focus();},50);
+}
+function cmMsg(t){const b=document.getElementById("cm-msg");if(!b)return;b.style.display="block";b.textContent=t;b.style.background="#fef2f2";b.style.color="#991b1b";b.style.border="1.5px solid #fca5a5";}
+async function saveCaisseMvt(id){
+  caisseNorm();
+  const montant=Math.round((parseFloat(String(document.getElementById("cm-montant").value).replace(/\s/g,"").replace(",","."))||0)*100)/100;
+  if(montant<=0){cmMsg("Indiquez un montant supérieur à 0.");return;}
+  const ancien=id?CAISSE.mouvements.find(x=>x.id===id):null;
+  const obj={
+    sens:document.getElementById("cm-sens").value,
+    montant,
+    date:document.getElementById("cm-date").value||getToday(),
+    mode:document.getElementById("cm-mode").value,
+    cat:document.getElementById("cm-cat").value,
+    libelle:document.getElementById("cm-lib").value.trim(),
+    tiers:document.getElementById("cm-tiers").value.trim(),
+    ref:document.getElementById("cm-ref").value.trim(),
+    note:document.getElementById("cm-note").value.trim(),
+  };
+  if(!obj.libelle) obj.libelle=obj.cat;
+  const mid=ancien?ancien.id:uid();
+  const fichier=document.getElementById("cm-file").files[0];
+  if(fichier){
+    if(fichier.size>DOCS_MAX_MO*1048576){cmMsg(`Fichier trop lourd (${fTaille(fichier.size)}). Maximum ${DOCS_MAX_MO} Mo.`);return;}
+    if(!currentUser||!currentUser.tenant_id){cmMsg("Session invalide, reconnectez-vous.");return;}
+    const btn=document.getElementById("cm-btn");if(btn){btn.disabled=true;btn.textContent="⟳ Envoi du justificatif…";}
+    const ext=(fichier.name.split(".").pop()||"bin").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const path=`${currentUser.tenant_id}/caisse/${mid}-${Date.now()}.${ext}`;
+    try{
+      const {error}=await sbClient.storage.from(DOCS_BUCKET).upload(path,fichier,{contentType:fichier.type||"application/octet-stream",upsert:false});
+      if(error) throw error;
+      if(ancien&&ancien.piece&&ancien.piece.path) sbClient.storage.from(DOCS_BUCKET).remove([ancien.piece.path]).catch(()=>{});
+      obj.piece={path,nom:fichier.name,type:fichier.type,taille:fichier.size};
+    }catch(e){
+      cmMsg("Envoi du justificatif impossible : "+(e.message||e));
+      if(btn){btn.disabled=false;btn.textContent="✓ Enregistrer";}
+      return;
+    }
+  }
+  if(ancien){
+    Object.assign(ancien,obj);
+    logActivity("Caisse — mouvement modifié",`${obj.sens==="entree"?"+":"−"}${cEur(montant)} · ${obj.libelle}`);
+  }else{
+    CAISSE.mouvements.push({id:mid,ts:new Date().toISOString(),par:currentUser?currentUser.nom:"",...obj});
+    logActivity(obj.sens==="entree"?"Caisse — entrée":"Caisse — sortie",`${cEur(montant)} (${obj.mode}) · ${obj.libelle}`);
+  }
+  saveData();closeModal();renderPage();
+}
+function supprCaisseMvt(id){
+  const m=CAISSE.mouvements.find(x=>x.id===id);if(!m)return;
+  if(!confirm(`Supprimer ce mouvement de ${cEur(m.montant)} ?`))return;
+  if(m.piece&&m.piece.path) sbClient.storage.from(DOCS_BUCKET).remove([m.piece.path]).catch(()=>{});
+  CAISSE.mouvements=CAISSE.mouvements.filter(x=>x.id!==id);
+  logActivity("Caisse — mouvement supprimé",`${m.sens==="entree"?"+":"−"}${cEur(m.montant)} · ${m.libelle||""}`);
+  saveData();closeModal();renderPage();
+}
+async function caisseVoirPiece(id){
+  const m=CAISSE.mouvements.find(x=>x.id===id);if(!m||!m.piece)return;
+  const {data,error}=await sbClient.storage.from(DOCS_BUCKET).createSignedUrl(m.piece.path,3600);
+  if(error||!data){alert("Impossible d'ouvrir le justificatif : "+(error?error.message:"introuvable"));return;}
+  window.open(data.signedUrl,"_blank");
+}
+
+// ── Comptage des espèces ──────────────────────────────────
+function renderCaisseComptage(esp,dernier){
+  const liste=[...CAISSE.comptages].sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));
+  return `
+    <div class="kpi-grid">
+      ${kpi("Espèces en caisse (théorique)",cEur(esp),"#8a6d3b",true)}
+      ${kpi("Dernier comptage",dernier?cEur(dernier.total):"—",TH.c1,true)}
+      ${kpi("Écart du dernier comptage",dernier?((dernier.ecart>0?"+":"")+cEur(dernier.ecart||0)):"—",dernier&&Math.abs(dernier.ecart||0)>=0.005?"#991b1b":"#15803d",true)}
+      ${kpi("Comptages enregistrés",liste.length,TH.c1)}
+    </div>
+    <div class="section-card">
+      <div class="section-head">
+        <div><div class="section-title">🪙 Comptage des espèces</div><div class="section-sub">Comptez billets et pièces : l'appli compare avec le solde théorique</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-add" style="background:#fff;color:${TH.c1};border:1.5px solid ${TH.c1}" onclick="modalComptage('ouverture')">☀️ Ouverture</button>
+          <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalComptage('cloture')">🌙 Clôture</button>
+          <button class="btn-add" style="background:#fff;color:#475569;border:1.5px solid #e2e8f0" onclick="modalComptage('controle')">🔎 Contrôle</button>
+        </div>
+      </div>
+      <div style="padding:4px 20px 14px">
+        ${liste.length===0?`<div style="padding:30px 0;text-align:center;color:#94a3b8;font-size:13px">Aucun comptage pour le moment.<br/>Commencez par un comptage d'ouverture pour fixer le fond de caisse.</div>`:
+        liste.map(c=>{
+          const ok=Math.abs(c.ecart||0)<0.005;
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+            <span style="font-size:20px">${c.type==="ouverture"?"☀️":c.type==="cloture"?"🌙":"🔎"}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13.5px">${CAISSE_TYPES_CPT[c.type]||"Comptage"} · ${cDateLong(c.date)}${c.heure?" à "+c.heure:""}</div>
+              <div style="font-size:11.5px;color:#64748b">Compté par ${cEsc(c.par||"—")} · théorique ${cEur(c.theorique)}${c.note?" · "+cEsc(c.note):""}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-weight:800;font-size:15px">${cEur(c.total)}</div>
+              ${badge(ok?"✓ Juste":(c.ecart>0?"+":"")+cEur(c.ecart),ok?"#dcfce7":"#fee2e2",ok?"#15803d":"#991b1b")}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <button class="btn-sm" title="Imprimer la fiche" onclick="caisseImprimerComptage('${c.id}')">🖨️</button>
+              <button class="btn-sm" title="Supprimer" onclick="supprComptage('${c.id}')">🗑</button>
+            </div>
+          </div>`;}).join("")}
+      </div>
+    </div>`;
+}
+function modalComptage(type){
+  const theo=caisseSoldeEspeces();
+  const ligne=c=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">
+      <div style="width:64px;font-weight:700;font-size:14px">${cCoupureLbl(c)}</div>
+      <button type="button" onclick="cptPas(${c},-1)" style="width:34px;height:34px;border-radius:9px;border:1.5px solid #e2e8f0;background:#fff;font-size:17px;cursor:pointer">−</button>
+      <input type="number" inputmode="numeric" min="0" step="1" id="cpt-${c}" value="" placeholder="0" oninput="cptMaj()" style="width:64px;text-align:center;padding:7px 4px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:15px"/>
+      <button type="button" onclick="cptPas(${c},1)" style="width:34px;height:34px;border-radius:9px;border:1.5px solid #e2e8f0;background:#fff;font-size:17px;cursor:pointer">＋</button>
+      <div id="cpt-st-${c}" style="flex:1;text-align:right;font-size:13px;color:#64748b">—</div>
+    </div>`;
+  showModal(`🪙 Comptage — ${CAISSE_TYPES_CPT[type]}`,`
+    <input type="hidden" id="cpt-type" value="${type}"/>
+    <div class="field-row">
+      <div class="field"><label>Date</label><input type="date" id="cpt-date" value="${getToday()}"/></div>
+      <div class="field"><label>Compté par</label><input id="cpt-par" value="${cEsc(currentUser?currentUser.nom:"")}"/></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 4px">Billets</div>
+    ${CAISSE_BILLETS.map(ligne).join("")}
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 4px">Pièces</div>
+    ${CAISSE_PIECES.map(ligne).join("")}
+    <div style="background:#F7F4ED;border-radius:12px;padding:14px 16px;margin:16px 0 12px;position:sticky;bottom:0">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:#64748b">Billets</span><span id="cpt-tb" style="font-weight:700">0,00 €</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:#64748b">Pièces</span><span id="cpt-tp" style="font-weight:700">0,00 €</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:16px;padding-top:7px;border-top:1px solid #ddd;margin-bottom:5px"><span style="font-weight:700">Total compté</span><span id="cpt-total" style="font-weight:800">0,00 €</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:#64748b">Solde théorique</span><span style="font-weight:700">${cEur(theo)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="font-weight:700">Écart</span><span id="cpt-ecart" style="font-weight:800">—</span></div>
+    </div>
+    <label id="cpt-adj-wrap" style="display:none;align-items:center;gap:8px;font-size:13px;margin-bottom:10px"><input type="checkbox" id="cpt-adj" checked/> Enregistrer l'écart comme ajustement de caisse (le solde théorique sera recalé sur le montant compté)</label>
+    <div class="field"><label>Note (optionnel)</label><input id="cpt-note" placeholder="Ex : fond de caisse pour la semaine"/></div>`,
+    `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
+     <button class="btn-save" style="background:${TH.c1}" onclick="saveComptage()">✓ Enregistrer le comptage</button>`);
+  window._cptTheo=cCts(theo);
+  cptMaj();
+}
+function cptPas(c,d){const i=document.getElementById("cpt-"+c);if(!i)return;i.value=Math.max(0,(parseInt(i.value)||0)+d)||"";cptMaj();}
+function cptLire(){
+  const det={};let tb=0,tp=0;
+  CAISSE_BILLETS.forEach(c=>{const n=Math.max(0,parseInt(document.getElementById("cpt-"+c).value)||0);if(n)det[c]=n;tb+=n*c;});
+  CAISSE_PIECES.forEach(c=>{const n=Math.max(0,parseInt(document.getElementById("cpt-"+c).value)||0);if(n)det[c]=n;tp+=n*c;});
+  return {det,tb,tp,total:tb+tp};
+}
+function cptMaj(){
+  const r=cptLire();
+  [...CAISSE_BILLETS,...CAISSE_PIECES].forEach(c=>{const n=r.det[c]||0;const e=document.getElementById("cpt-st-"+c);if(e){e.textContent=n?cEur(n*c/100):"—";e.style.color=n?"#1A2118":"#94a3b8";e.style.fontWeight=n?"700":"400";}});
+  document.getElementById("cpt-tb").textContent=cEur(r.tb/100);
+  document.getElementById("cpt-tp").textContent=cEur(r.tp/100);
+  document.getElementById("cpt-total").textContent=cEur(r.total/100);
+  const ec=r.total-(window._cptTheo||0);
+  const e=document.getElementById("cpt-ecart");
+  e.textContent=ec===0?"✓ Aucun écart":(ec>0?"+":"")+cEur(ec/100)+(ec>0?" (excédent)":" (manquant)");
+  e.style.color=ec===0?"#15803d":"#991b1b";
+  document.getElementById("cpt-adj-wrap").style.display=ec===0?"none":"flex";
+}
+function saveComptage(){
+  caisseNorm();
+  const r=cptLire();
+  const theo=window._cptTheo||0;
+  const ecart=r.total-theo;
+  if(r.total===0&&!confirm("Le total compté est de 0 €. Enregistrer quand même ?"))return;
+  const now=new Date();
+  const c={id:uid(),ts:now.toISOString(),type:document.getElementById("cpt-type").value,
+    date:document.getElementById("cpt-date").value||getToday(),
+    heure:String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0"),
+    par:document.getElementById("cpt-par").value.trim(),note:document.getElementById("cpt-note").value.trim(),
+    detail:r.det,totalBillets:r.tb/100,totalPieces:r.tp/100,total:r.total/100,theorique:theo/100,ecart:ecart/100,ajustementId:""};
+  if(ecart!==0&&document.getElementById("cpt-adj").checked){
+    const aid=uid();
+    CAISSE.mouvements.push({id:aid,ts:now.toISOString(),par:c.par,sens:ecart>0?"entree":"sortie",montant:Math.abs(ecart)/100,
+      date:c.date,mode:"Espèces",cat:"Ajustement de caisse",libelle:`Écart constaté au comptage (${(CAISSE_TYPES_CPT[c.type]||"").toLowerCase()})`,
+      tiers:"",ref:"",note:"",comptageId:c.id});
+    c.ajustementId=aid;
+  }
+  CAISSE.comptages.push(c);
+  logActivity("Caisse — comptage "+(CAISSE_TYPES_CPT[c.type]||"").toLowerCase(),`${cEur(c.total)} compté · écart ${c.ecart>0?"+":""}${cEur(c.ecart)}`);
+  saveData();closeModal();caisseOnglet="comptage";renderPage();
+}
+function supprComptage(id){
+  const c=CAISSE.comptages.find(x=>x.id===id);if(!c)return;
+  const adj=c.ajustementId&&CAISSE.mouvements.find(m=>m.id===c.ajustementId);
+  if(!confirm(`Supprimer ce comptage du ${cDateLong(c.date)} ?${adj?"\nL'ajustement de caisse qu'il avait créé sera aussi supprimé.":""}`))return;
+  CAISSE.comptages=CAISSE.comptages.filter(x=>x.id!==id);
+  if(adj) CAISSE.mouvements=CAISSE.mouvements.filter(m=>m.id!==c.ajustementId);
+  logActivity("Caisse — comptage supprimé",`${cDateLong(c.date)} · ${cEur(c.total)}`);
+  saveData();renderPage();
+}
+
+// ── Exports ───────────────────────────────────────────────
+function caisseExportCSV(){
+  const L=caisseFiltrees();
+  const num=n=>(Number(n)||0).toFixed(2).replace(".",",");
+  const q=s=>'"'+String(s==null?"":s).replace(/"/g,'""')+'"';
+  const rows=[["Date","Sens","Montant","Mode","Catégorie","Libellé","Tiers","Source","Référence","Note"]]
+    .concat(L.map(l=>[l.date,l.sens==="entree"?"Entrée":"Sortie",(l.sens==="entree"?"":"-")+num(l.montant),l.mode,l.cat,l.libelle,l.tiers,l.source,l.ref,l.note||""]));
+  const csv="﻿"+rows.map(r=>r.map(q).join(";")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const [du,au]=caisseBornes();
+  a.download=`journal-caisse_${caisseFiltre.periode==="tout"?"complet":du+"_"+au}.csv`;
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+function caisseEnteteDoc(titre,sousTitre){
+  const logoSrc=thLogo();
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cEsc(titre)}</title><style>
+    body{font-family:'Inter',Arial,sans-serif;color:#1A2118;padding:36px 42px;font-size:12.5px}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${TH.c1};padding-bottom:16px;margin-bottom:22px}
+    .logo-zone{display:flex;align-items:center;gap:12px}.logo-zone img{width:56px;height:56px;object-fit:contain}
+    .brand-name{font-size:18px;font-weight:800}.brand-sub{font-size:12px;color:${TH.c1}}
+    h1{margin:0;font-size:20px;text-align:right}.st{font-size:12px;color:#64748b;text-align:right;margin-top:4px}
+    table{width:100%;border-collapse:collapse;margin-bottom:18px}
+    th{background:${TH.sidebar};color:#fff;padding:8px 10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px}
+    td{padding:7px 10px;border-bottom:1px solid #e8e4dc}
+    .r{text-align:right}.e{color:#15803d}.s{color:#991b1b}
+    .tot td{font-weight:800;background:#F7F4ED}
+    .sign{display:flex;gap:30px;margin-top:40px}.sign div{flex:1;border-top:1px solid #94a3b8;padding-top:6px;font-size:11px;color:#64748b}
+    .foot{margin-top:30px;font-size:10px;color:#94a3b8;text-align:center}
+    @media print{body{padding:20px 26px}}
+  </style></head><body>
+  <div class="head"><div class="logo-zone">${logoSrc?`<img src="${logoSrc}" onerror="this.style.display='none'"/>`:""}<div><div class="brand-name">${cEsc(TH.nom)}</div><div class="brand-sub">${cEsc(TH.sous||"")}</div></div></div>
+  <div><h1>${cEsc(titre)}</h1><div class="st">${sousTitre}</div></div></div>`;
+}
+function caisseOuvrirImpression(html){
+  const w=window.open("","_blank");
+  if(!w){alert("Veuillez autoriser les fenêtres pop-up pour générer le PDF.");return;}
+  w.document.write(html+`<div class="foot">${cEsc(TH.nom)} ${cEsc(TH.sous||"")} — document généré le ${cDateLong(getToday())}</div><script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script></body></html>`);
+  w.document.close();
+}
+function caisseImprimerJournal(){
+  const L=[...caisseFiltrees()].reverse();
+  const ent=L.filter(l=>l.sens==="entree").reduce((s,l)=>s+cCts(l.montant),0)/100;
+  const sor=L.filter(l=>l.sens==="sortie").reduce((s,l)=>s+cCts(l.montant),0)/100;
+  caisseOuvrirImpression(caisseEnteteDoc("JOURNAL DE CAISSE",`Période : ${cEsc(caisseLibPeriode())}<br/>${L.length} transaction(s)`)+`
+    <table><thead><tr><th>Date</th><th>Libellé</th><th>Tiers</th><th>Mode</th><th>Catégorie</th><th class="r">Entrée</th><th class="r">Sortie</th></tr></thead><tbody>
+    ${L.map(l=>`<tr><td>${cDateLong(l.date)}</td><td>${cEsc(l.libelle)}${l.ref?`<br/><span style="color:#94a3b8;font-size:10.5px">${cEsc(l.ref)}</span>`:""}</td><td>${cEsc(l.tiers)}</td><td>${cEsc(l.mode)}</td><td>${cEsc(l.cat)}</td>
+      <td class="r e">${l.sens==="entree"?cEur(l.montant):""}</td><td class="r s">${l.sens==="sortie"?cEur(l.montant):""}</td></tr>`).join("")}
+    <tr class="tot"><td colspan="5">Totaux</td><td class="r e">${cEur(ent)}</td><td class="r s">${cEur(sor)}</td></tr>
+    <tr class="tot"><td colspan="5">Solde de la période</td><td colspan="2" class="r">${cEur(ent-sor)}</td></tr>
+    </tbody></table>
+    <div style="font-size:12px">Espèces en caisse (solde théorique au ${cDateLong(getToday())}) : <strong>${cEur(caisseSoldeEspeces())}</strong></div>`);
+}
+function caisseImprimerComptage(id){
+  const c=CAISSE.comptages.find(x=>x.id===id);if(!c)return;
+  const det=c.detail||{};
+  const ligne=v=>{const n=det[v]||0;return `<tr><td>${cCoupureLbl(v)}</td><td class="r">${n||"—"}</td><td class="r">${n?cEur(n*v/100):"—"}</td></tr>`;};
+  const ok=Math.abs(c.ecart||0)<0.005;
+  caisseOuvrirImpression(caisseEnteteDoc("FICHE DE COMPTAGE DE CAISSE",`${CAISSE_TYPES_CPT[c.type]||""} du ${cDateLong(c.date)}${c.heure?" à "+c.heure:""}<br/>Compté par ${cEsc(c.par||"—")}`)+`
+    <div style="display:flex;gap:24px">
+      <table style="flex:1"><thead><tr><th>Billets</th><th class="r">Nombre</th><th class="r">Montant</th></tr></thead><tbody>
+        ${CAISSE_BILLETS.map(ligne).join("")}<tr class="tot"><td colspan="2">Total billets</td><td class="r">${cEur(c.totalBillets)}</td></tr></tbody></table>
+      <table style="flex:1"><thead><tr><th>Pièces</th><th class="r">Nombre</th><th class="r">Montant</th></tr></thead><tbody>
+        ${CAISSE_PIECES.map(ligne).join("")}<tr class="tot"><td colspan="2">Total pièces</td><td class="r">${cEur(c.totalPieces)}</td></tr></tbody></table>
+    </div>
+    <table style="width:340px;margin-left:auto"><tbody>
+      <tr class="tot"><td>Total compté</td><td class="r">${cEur(c.total)}</td></tr>
+      <tr><td>Solde théorique</td><td class="r">${cEur(c.theorique)}</td></tr>
+      <tr class="tot"><td>Écart</td><td class="r ${ok?"e":"s"}">${ok?"Aucun écart":(c.ecart>0?"+":"")+cEur(c.ecart)}</td></tr>
+      ${c.ajustementId?`<tr><td colspan="2" style="font-size:11px;color:#64748b">Écart enregistré en ajustement de caisse.</td></tr>`:""}
+    </tbody></table>
+    ${c.note?`<div style="background:#f8fafc;border-left:3px solid ${TH.c1};padding:10px 14px;font-size:12px">Note : ${cEsc(c.note)}</div>`:""}
+    <div class="sign"><div>Signature de la personne ayant compté</div><div>Signature du responsable</div></div>`);
 }
 
 function renderAdmin(){
@@ -7121,6 +7587,7 @@ function renderPage(){
   else if(currentPage==="admin")        c.innerHTML=renderAdmin();
   else if(currentPage==="factures")     c.innerHTML=renderFactures();
   else if(currentPage==="banque"){ c.innerHTML=renderBanque(); if(!BANQUE_DATA&&!banqueLoading) fetchBanque(); }
+  else if(currentPage==="caisse")       c.innerHTML=renderCaisse();
   else if(currentPage==="pipeline")     c.innerHTML=renderPipeline();
   else if(currentPage==="devis")        c.innerHTML=renderDevis();
   else if(currentPage==="stats")        c.innerHTML=renderStats();
