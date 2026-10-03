@@ -1125,7 +1125,8 @@ const DEF_TH={...TH};
 // Profil AD Secure Concept : complète les réglages de ce compte s'il en manque (aucun effet sur les autres entreprises)
 const ADS_TH={nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
   contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",horaires:"Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30",
-  sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"}};
+  sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"},
+  sigMailUsers:{"8d0d5004-4a33-46da-8b0f-76e97be2894c":{nom:"Daniel VICTORNI",poste:"Directeur",tel1:"0696 43 95 84",tel2:"",email:""}}};
 function isADS(t){return /^AD\s*Secure/i.test((t&&t.nom)||"");}
 function mergeTH(saved){
   const t=Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);
@@ -3754,9 +3755,12 @@ function delPaiement(id,idx){
 // ── SIGNATURE DES E-MAILS : même code dans app.html (aperçu) et dans « relances-auto » (envoi) ──
 const SigMail=(function(){
   const e=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  function cfg(TH){
+  function cfg(TH,uid){
     TH=TH||{};
-    const s=TH.sigMail||{};
+    const s=Object.assign({},TH.sigMail||{});
+    // signature personnelle de l'utilisateur qui envoie (nom, fonction, téléphones, e-mail)
+    const u=uid&&TH.sigMailUsers&&TH.sigMailUsers[uid];
+    if(u&&u.actif!==false) ["nom","poste","tel1","tel2","email"].forEach(k=>{if(u[k]!==undefined&&String(u[k]).trim()!=="")s[k]=u[k];else if(k==="tel2"&&u.tel1)s.tel2=u.tel2||"";});
     return {actif:s.actif!==false&&!!TH.sigMail,nom:s.nom||"",poste:s.poste||"",
       societe:s.societe||((TH.nom||"")+" "+(TH.sous||"")).trim(),
       tel1:s.tel1!==undefined?s.tel1:(TH.tel||""),tel2:s.tel2||"",
@@ -3765,11 +3769,11 @@ const SigMail=(function(){
       couleur:TH.c1||"#3286A0"};
   }
   // Nom placé sous « Cordialement, » dans le texte quand la signature riche est active
-  function court(TH){const c=cfg(TH);return c.nom||c.societe;}
+  function court(TH,uid){const c=cfg(TH,uid);return c.nom||c.societe;}
   function lienSite(u){u=String(u||"").trim();if(!u)return"";return /^https?:\/\//i.test(u)?u:"https://"+u;}
   function siteAffiche(u){return String(u||"").replace(/^https?:\/\//i,"").replace(/\/$/,"");}
-  function html(TH){
-    const c=cfg(TH);if(!c.actif)return"";
+  function html(TH,uid){
+    const c=cfg(TH,uid);if(!c.actif)return"";
     const a=(href,txt)=>`<a href="${e(href)}" style="color:#1A2118;text-decoration:none">${e(txt)}</a>`;
     const tels=[c.tel1,c.tel2].filter(Boolean).map(t=>a("tel:"+t.replace(/[^\d+]/g,""),t)).join(" &nbsp;·&nbsp; ");
     const lignes=[
@@ -3787,8 +3791,8 @@ ${c.slogan?`<div style="color:#64748b;font-size:12px;font-style:italic">${e(c.sl
 <div style="margin-top:6px">${lignes}</div>
 </td></tr></table>`;
   }
-  function texte(TH){
-    const c=cfg(TH);if(!c.actif)return"";
+  function texte(TH,uid){
+    const c=cfg(TH,uid);if(!c.actif)return"";
     return ["--",c.nom,[c.poste,c.societe].filter(Boolean).join(" · "),[c.tel1,c.tel2].filter(Boolean).join(" · "),c.email,siteAffiche(c.site),c.adresse].filter(Boolean).join("\n");
   }
   return {cfg,court,html,texte};
@@ -6453,7 +6457,7 @@ function docValeursMail(type,d){
   const emetteur=`${TH.nom} ${TH.sous||""}`.trim();
   const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
   return {contact:cli&&cli.contact?cli.contact:"Madame, Monsieur",entreprise:cli?cli.nom:(d.client||""),numero:d.num,
-    montant:fMoney(T.ttc(d)),signature:SigMail.cfg(TH).actif?SigMail.court(TH):emetteur+(coord?"\n"+coord:""),...T.valeurs(d)};
+    montant:fMoney(T.ttc(d)),signature:SigMail.cfg(TH).actif?SigMail.court(TH,currentUser&&currentUser.id):emetteur+(coord?"\n"+coord:""),...T.valeurs(d)};
 }
 function docMessageDefaut(type,d){
   const T=DOC_ENVOI[type], v=docValeursMail(type,d);
@@ -6491,7 +6495,7 @@ function modalEnvoiDoc(type,id){
         ${TH[T.cleModele]?`<button class="btn-sm" onclick="resetModeleDoc('${type}','${d.id}')">↺ Message d'origine</button>`:""}
       </div></div>
     ${SigMail.cfg(TH).actif?`<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:2px 0 4px">Signature ajoutée sous le message</div>
-      <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(TH)}</div>`:""}
+      <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(TH,currentUser&&currentUser.id)}</div>`:""}
     <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(fichier)}</b> joint automatiquement
       <button class="btn-sm" onclick="DOC_ENVOI['${type}'].apercu('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
     ${type==="devis"&&!d.signatureElec&&!["refuse","transforme"].includes(d.statut)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ev-signer" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> ✍️ Ajouter un lien pour signer le devis en ligne</label>`:""}
@@ -9531,6 +9535,23 @@ function sigSet(k,v){
   const ap=document.getElementById("sig-apercu");
   if(ap) ap.innerHTML=SigMail.cfg(TH).actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée : seuls le nom de l'entreprise et ses coordonnées figurent en texte simple.</div>`;
 }
+// Signatures personnelles : chaque utilisateur signe les devis et factures qu'il envoie
+function sigUserSet(uid,k,v){
+  TH.sigMailUsers=TH.sigMailUsers||{};TH.sigMailUsers[uid]=TH.sigMailUsers[uid]||{};
+  TH.sigMailUsers[uid][k]=v;saveData();
+  const ap=document.getElementById("sig-ap-"+uid);if(ap)ap.innerHTML=SigMail.html(TH,uid);
+}
+function renderSigUsers(){
+  const L=(PROFILES&&PROFILES.length?PROFILES:(currentUser?[{id:currentUser.id,nom:currentUser.nom,poste:currentUser.poste,tel:currentUser.tel}]:[]));
+  if(!L.length) return "";
+  const v=x=>String(x==null?"":x).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+  return `<div class="section-sub" style="margin:4px 0 6px">👤 Signatures personnelles</div>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:10px;line-height:1.4">Quand un utilisateur envoie un devis, une facture ou un rapport, sa signature remplace le nom, la fonction et les téléphones ci-dessus. Les relances automatiques gardent la signature de l'entreprise. Champ vide = valeur de l'entreprise.</div>
+    ${L.map(p=>{const u=(TH.sigMailUsers||{})[p.id]||{};const f=(k,lbl,ph)=>`<div class="p-field" style="margin-bottom:8px"><label class="field-label">${lbl}</label><input value="${v(u[k])}" placeholder="${v(ph)}" oninput="sigUserSet('${p.id}','${k}',this.value)"/></div>`;
+      return `<details style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;margin-bottom:8px"${u.nom?"":" open"}><summary style="cursor:pointer;font-weight:700;font-size:13px">${v(p.nom||"Utilisateur")}${p.id===(currentUser&&currentUser.id)?" (vous)":""}</summary>
+        <div style="margin-top:10px">${f("nom","Nom affiché",p.nom||"")}${f("poste","Fonction",p.poste||"")}${f("tel1","Téléphone",p.tel||"")}${f("tel2","Téléphone 2","")}${f("email","E-mail",SigMail.cfg(TH).email)}
+        <div class="field-label" style="margin:6px 0 4px">Aperçu</div><div id="sig-ap-${p.id}" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 10px 10px;background:#fff;overflow-x:auto">${SigMail.html(TH,p.id)}</div></div></details>`;}).join("")}`;
+}
 function renderSigMailReglages(){
   const c=SigMail.cfg(TH);
   const v=x=>String(x==null?"":x).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
@@ -9549,7 +9570,8 @@ function renderSigMailReglages(){
     ${f("logoUrl","Adresse web du logo","https://www.votre-entreprise.fr/logo.png","url")}
     <div style="font-size:11px;color:#94a3b8;margin:-6px 0 12px;line-height:1.4">Le logo doit être une image en ligne (lien https) : les messageries n'affichent pas les images intégrées.</div>
     <div class="field-label" style="margin-bottom:4px">Aperçu</div>
-    <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>`;
+    <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>
+    ${c.actif?renderSigUsers():""}`;
 }
 function renderThemePanel(){
   return`<div class="panel-overlay">
