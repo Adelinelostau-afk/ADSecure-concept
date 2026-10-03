@@ -5197,10 +5197,11 @@ function renderDevis(){
               <td style="font-size:12px;color:#64748b">${d.date?fDate(d.date):"—"}</td>
               <td style="font-size:12px;color:${expire?"#991b1b":"#64748b"};font-weight:${expire?700:400}">${d.validite?fDate(d.validite):"—"}${expire?" ⚠️":""}</td>
               <td style="font-weight:700">${fMoney(devisTTC(d))}</td>
-              <td><span class="badge" style="background:${bg};color:${col}">${lbl}</span></td>
+              <td><span class="badge" style="background:${bg};color:${col}">${lbl}</span>${signBadge(d)}</td>
               <td><div style="display:flex;gap:5px">
                 <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" title="PDF" style="border-color:#86efac;background:#f0fdf4;color:#15803d">📄</button>
                 <button class="btn-sm" onclick="modalEnvoiDevis('${d.id}')" title="Envoyer par e-mail${(d.envois||[]).length?" (déjà envoyé le "+fDate(d.envois[d.envois.length-1].date)+")":""}" style="border-color:#bae6fd;background:#f0f9ff;color:#0369a1">✉️${(d.envois||[]).length?"✓":""}</button>
+                ${signBouton(d)}
                 <button class="btn-sm btn-edit" onclick="modalDevis('${d.id}')">✏️</button>
                 ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersBC('${d.id}')" title="Passer en bon de commande" style="border-color:#fde68a;background:#fffbeb;color:#b45309">📋</button>`:""}
                 ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersFacture('${d.id}')" title="Convertir en facture" style="border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8">🧾</button>`:""}
@@ -6085,6 +6086,181 @@ function genererBCClientPDF(id){
 }
 
 // HTML complet du devis (impression ou conversion en PDF pour l'envoi par e-mail)
+// ══════════════════════════════════════════════════════════
+// ── SIGNATURE EN LIGNE DES DEVIS ──────────────────────────
+// ══════════════════════════════════════════════════════════
+// Un lien secret (signer.html?t=…) permet au client de consulter une copie figée du devis
+// et de le signer. La preuve est gardée dans la table devis_signatures ; l'appli la récupère
+// et passe le devis en « Accepté ».
+let SIGN_CACHE={};      // devisId → dernier lien connu (sans la copie du devis ni l'image de signature)
+let signSyncTs=0, signSyncEnCours=false;
+const SIGN_COLS="id,token,devis_id,devis_num,statut,created_at,expires_at,consulte_le,signe_le,signataire,ip,snapshot_hash,client_email";
+function sgE(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function urlSignature(token){return location.href.split("#")[0].split("?")[0].replace(/[^/]*$/,"")+"signer.html?t="+token;}
+async function sha256Hex(txt){
+  try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}catch(e){return "";}
+}
+function dtFr(iso){return iso?new Date(iso).toLocaleString("fr-FR",{dateStyle:"medium",timeStyle:"short"}):"—";}
+
+// Crée (ou réutilise si le devis n'a pas changé) le lien de signature d'un devis
+async function creerLienSignature(devisId){
+  const d=DEVIS.find(x=>x.id===devisId);if(!d) throw new Error("Devis introuvable");
+  if(!currentUser||!currentUser.tenant_id) throw new Error("Session invalide, reconnectez-vous.");
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  const html=devisDocHTML(d,false);
+  const hash=await sha256Hex(html);
+  const {data:exist}=await sbClient.from("devis_signatures").select(SIGN_COLS).eq("devis_id",d.id).eq("statut","en_attente");
+  const meme=(exist||[]).find(r=>r.snapshot_hash===hash&&(!r.expires_at||new Date(r.expires_at)>new Date()));
+  if(meme){SIGN_CACHE[d.id]=meme;return urlSignature(meme.token);}
+  // le devis a changé : les anciens liens sont annulés pour qu'une seule version soit signable
+  for(const r of (exist||[])) await sbClient.from("devis_signatures").update({statut:"annule"}).eq("id",r.id);
+  const fin=d.validite&&d.validite>=getToday()?d.validite+"T23:59:59":new Date(Date.now()+30*864e5).toISOString();
+  const {data,error}=await sbClient.from("devis_signatures").insert({tenant_id:currentUser.tenant_id,devis_id:d.id,devis_num:d.num,
+    client_nom:cli?cli.nom:"",client_email:cli&&cli.email||null,montant_ttc:Math.round(devisTTC(d)*100)/100,
+    snapshot_html:html,snapshot_hash:hash,expires_at:fin}).select(SIGN_COLS).single();
+  if(error) throw new Error(error.message.includes("devis_signatures")?"La signature en ligne n'est pas encore activée sur le serveur.":error.message);
+  SIGN_CACHE[d.id]=data;
+  d.signEnLigne={id:data.id,cree:getToday()};
+  logActivity("Lien de signature créé",`${d.num}${cli?" — "+cli.nom:""}`);
+  saveData();
+  return urlSignature(data.token);
+}
+
+// Récupère les signatures faites par les clients et met les devis à jour
+async function syncSignaturesDevis(force){
+  if(!currentUser||!currentUser.tenant_id||signSyncEnCours) return;
+  if(!force&&Date.now()-signSyncTs<60000) return;
+  signSyncEnCours=true;signSyncTs=Date.now();
+  try{
+    const {data,error}=await sbClient.from("devis_signatures").select(SIGN_COLS).order("created_at",{ascending:true}).limit(1000);
+    if(error||!data) return;
+    const signes=[];
+    SIGN_CACHE={};
+    data.forEach(r=>{const prev=SIGN_CACHE[r.devis_id];if(!prev||prev.statut!=="signe"||r.statut==="signe")SIGN_CACHE[r.devis_id]=r;});
+    data.filter(r=>r.statut==="signe").forEach(r=>{
+      const d=DEVIS.find(x=>x.id===r.devis_id);if(!d)return;
+      if(d.signatureElec&&d.signatureElec.id===r.id)return;
+      d.signatureElec={id:r.id,date:r.signe_le,nom:r.signataire,ip:r.ip||"",hash:r.snapshot_hash||""};
+      if(["brouillon","envoye","expire"].includes(d.statut)) d.statut="accepte";
+      logActivity("Devis signé en ligne",`${d.num} par ${r.signataire} le ${dtFr(r.signe_le)}`);
+      signes.push(d);
+    });
+    if(signes.length){
+      saveData();renderPage();renderNav();
+      setTimeout(()=>alert(`✍️ ${signes.length>1?signes.length+" devis signés":"Devis signé"} en ligne :\n\n`+signes.map(d=>{const c=CLIENTS.find(x=>x.id===d.clientId);return `• ${d.num}${c?" — "+c.nom:""} (signé par ${d.signatureElec.nom})`;}).join("\n")+"\n\nIl"+(signes.length>1?"s sont passés":" est passé")+" en « Accepté »."),300);
+    }else if(["devis","client-fiche"].includes(currentPage)){
+      // mise à jour des pastilles « consulté / en attente »
+      const c=document.getElementById("content");if(c&&!document.querySelector(".modal-overlay"))renderPage();
+    }
+  }catch(e){}finally{signSyncEnCours=false;}
+}
+setInterval(()=>{if(document.visibilityState==="visible")syncSignaturesDevis();},120000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")syncSignaturesDevis();});
+
+// Pastille affichée à côté du statut du devis
+function signBadge(d){
+  if(d.signatureElec) return ` <span class="badge" title="Signé par ${sgE(d.signatureElec.nom)} le ${sgE(dtFr(d.signatureElec.date))}" style="background:#dcfce7;color:#15803d">✍️ signé en ligne</span>`;
+  const r=SIGN_CACHE[d.id];
+  if(r&&r.statut==="en_attente"){
+    if(r.expires_at&&new Date(r.expires_at)<new Date()) return ` <span class="badge" style="background:#f1f5f9;color:#94a3b8">lien expiré</span>`;
+    return r.consulte_le?` <span class="badge" title="Ouvert le ${sgE(dtFr(r.consulte_le))}" style="background:#fef9c3;color:#a16207">👁️ consulté</span>`:` <span class="badge" style="background:#e8f4f8;color:#3286A0">🔗 en attente</span>`;
+  }
+  return "";
+}
+function signBouton(d){
+  const r=SIGN_CACHE[d.id];
+  const ico=d.signatureElec?"✅":(r&&r.statut==="en_attente"?"🔗":"🖊️");
+  return `<button class="btn-sm" onclick="modalSignEnLigne('${d.id}')" title="Signature en ligne" style="border-color:#a7f3d0;background:#ecfdf5;color:#047857">${ico}</button>`;
+}
+
+async function modalSignEnLigne(devisId){
+  const d=DEVIS.find(x=>x.id===devisId);if(!d)return;
+  const cli=CLIENTS.find(c=>c.id===d.clientId);
+  showModal(`🖊️ Signature en ligne — ${sgE(d.num)}`,`<div style="padding:30px;text-align:center;color:#64748b">⟳ Chargement…</div>`,`<button class="btn-cancel" onclick="closeModal()">Fermer</button>`);
+  const {data:rows}=await sbClient.from("devis_signatures").select(SIGN_COLS).eq("devis_id",d.id).order("created_at",{ascending:false});
+  const L=rows||[];
+  const signe=L.find(r=>r.statut==="signe");
+  const attente=L.find(r=>r.statut==="en_attente"&&(!r.expires_at||new Date(r.expires_at)>new Date()));
+  if(signe){
+    showModal(`✍️ ${sgE(d.num)} signé en ligne`,`
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-weight:800;color:#15803d;font-size:15px">Signé par ${sgE(signe.signataire)}</div>
+        <div style="font-size:13px;color:#15803d">le ${sgE(dtFr(signe.signe_le))}</div></div>
+      ${[["Client",cli?cli.nom:"—"],["Lien ouvert le",dtFr(signe.consulte_le)],["Adresse IP",signe.ip||"—"],["Empreinte du devis signé",(signe.snapshot_hash||"—").slice(0,32)+"…"]]
+        .map(([l,v])=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">${l}</span><span style="font-weight:600;text-align:right;word-break:break-all">${sgE(v)}</span></div>`).join("")}
+      <div style="font-size:12px;color:#64748b;margin-top:10px">Le certificat reprend la copie exacte du devis tel que le client l'a signé, avec sa signature et les éléments de preuve.</div>`,
+      `<button class="btn-cancel" onclick="closeModal()">Fermer</button>
+       <button class="btn-cancel" onclick="window.open('${urlSignature(signe.token)}','_blank')">↗️ Page du client</button>
+       <button class="btn-save" style="background:${TH.c1}" onclick="imprimerCertificatSignature('${signe.id}')">📄 Certificat PDF</button>`);
+    return;
+  }
+  if(attente){
+    const url=urlSignature(attente.token);
+    showModal(`🔗 Lien de signature — ${sgE(d.num)}`,`
+      <div style="font-size:13px;color:#475569;margin-bottom:10px">Envoyez ce lien à ${sgE(cli?cli.nom:"votre client")} : il pourra lire le devis et le signer depuis son téléphone ou son ordinateur.</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px"><input id="sg-url" readonly value="${sgE(url)}" onclick="this.select()" style="flex:1;padding:10px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:12.5px;background:#F7F4ED"/>
+        <button class="btn-sm" onclick="copierLienSign(this)">📋 Copier</button></div>
+      ${[["Créé le",dtFr(attente.created_at)],["Valable jusqu'au",dtFr(attente.expires_at)],["Ouvert par le client",attente.consulte_le?"Oui, le "+dtFr(attente.consulte_le):"Pas encore"]]
+        .map(([l,v])=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">${l}</span><span style="font-weight:600">${sgE(v)}</span></div>`).join("")}
+      ${navigator.share?`<button class="btn-sm" style="margin-top:12px" onclick="navigator.share({title:'Devis ${sgE(d.num)}',text:'Votre devis ${sgE(d.num)} à signer en ligne',url:document.getElementById('sg-url').value}).catch(()=>{})">📤 Partager (SMS, WhatsApp…)</button>`:""}`,
+      `<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca;margin-right:auto" onclick="annulerLienSign('${attente.id}','${d.id}')">Annuler le lien</button>
+       <button class="btn-cancel" onclick="closeModal()">Fermer</button>
+       <button class="btn-save" style="background:${TH.c1}" onclick="closeModal();modalEnvoiDevis('${d.id}')">✉️ Envoyer par e-mail</button>`);
+    return;
+  }
+  showModal(`🖊️ Signature en ligne — ${sgE(d.num)}`,`
+    <div style="font-size:14px;color:#1A2118;line-height:1.6">Créez un lien sécurisé pour que ${sgE(cli?cli.nom:"le client")} signe ce devis en ligne.</div>
+    <ul style="font-size:13px;color:#475569;line-height:1.7;padding-left:18px">
+      <li>Le client voit une copie figée du devis (${fMoney(devisTTC(d))} TTC) et signe au doigt ou à la souris.</li>
+      <li>Le devis passe en « Accepté » dans l'appli et vous recevez un e-mail.</li>
+      <li>Nom, date, IP et empreinte du document sont conservés comme preuve.</li>
+      <li>Le lien expire à la date de validité du devis${d.validite?" ("+fDate(d.validite)+")":""}.</li>
+    </ul>
+    <div id="sg-msg" style="display:none;margin-top:8px;padding:10px 12px;border-radius:9px;font-size:13px;background:#fef2f2;color:#991b1b"></div>`,
+    `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
+     <button class="btn-save" id="sg-btn" style="background:${TH.c1}" onclick="creerEtAfficherLien('${d.id}')">🔗 Créer le lien</button>`);
+}
+async function creerEtAfficherLien(devisId){
+  const b=document.getElementById("sg-btn");if(b){b.disabled=true;b.textContent="⟳ Création…";}
+  try{await creerLienSignature(devisId);const d=DEVIS.find(x=>x.id===devisId);if(d&&d.statut==="brouillon")d.statut="envoye";saveData();renderPage();modalSignEnLigne(devisId);}
+  catch(e){const m=document.getElementById("sg-msg");if(m){m.style.display="block";m.textContent=e.message||String(e);}if(b){b.disabled=false;b.textContent="🔗 Créer le lien";}}
+}
+function copierLienSign(b){
+  const i=document.getElementById("sg-url");if(!i)return;
+  const ok=()=>{if(b){const t=b.textContent;b.textContent="✓ Copié";setTimeout(()=>{b.textContent=t;},1500);}};
+  if(navigator.clipboard) navigator.clipboard.writeText(i.value).then(ok,()=>{i.select();document.execCommand("copy");ok();});
+  else{i.select();document.execCommand("copy");ok();}
+}
+async function annulerLienSign(id,devisId){
+  if(!confirm("Annuler ce lien ? Le client ne pourra plus signer avec."))return;
+  const {error}=await sbClient.from("devis_signatures").update({statut:"annule"}).eq("id",id);
+  if(error){alert("Annulation impossible : "+error.message);return;}
+  delete SIGN_CACHE[devisId];logActivity("Lien de signature annulé",(DEVIS.find(x=>x.id===devisId)||{}).num||"");
+  closeModal();renderPage();
+}
+async function imprimerCertificatSignature(id){
+  const w=window.open("","_blank");if(!w){alert("Veuillez autoriser les fenêtres pop-up pour générer le PDF.");return;}
+  w.document.write(`<p style="font-family:Arial;padding:30px;color:#64748b">⟳ Préparation du certificat…</p>`);
+  const {data:r,error}=await sbClient.from("devis_signatures").select("*").eq("id",id).single();
+  if(error||!r){w.document.body.innerHTML="Certificat introuvable.";return;}
+  const bloc=`<div style="page-break-before:always;font-family:Inter,Arial,sans-serif;padding:40px 46px;color:#1A2118">
+    <div style="border-bottom:3px solid ${TH.c1};padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end">
+      <div style="font-size:20px;font-weight:800">CERTIFICAT DE SIGNATURE ÉLECTRONIQUE</div><div style="font-size:12px;color:#64748b">${sgE(r.devis_num)}</div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      ${[["Document","Devis "+r.devis_num+" — "+Number(r.montant_ttc||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR"})+" TTC"],["Émetteur",`${TH.nom} ${TH.sous||""}`.trim()],["Client",r.client_nom||"—"],
+        ["Lien créé le",dtFr(r.created_at)],["Lien ouvert le",dtFr(r.consulte_le)],["Signé le",dtFr(r.signe_le)],["Signataire",r.signataire||"—"],
+        ["Mention acceptée","Bon pour accord — acceptation du devis et des conditions générales de vente"],["Adresse IP",r.ip||"—"],["Navigateur",r.user_agent||"—"],
+        ["Empreinte SHA-256 du devis",r.snapshot_hash||"—"]].map(([l,v])=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #e8e4dc;color:#64748b;width:200px;vertical-align:top">${sgE(l)}</td><td style="padding:8px 10px;border-bottom:1px solid #e8e4dc;font-weight:600;word-break:break-all">${sgE(v)}</td></tr>`).join("")}
+    </table>
+    <div style="margin-top:22px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700">Signature du client</div>
+    ${r.signature_png?`<img src="${r.signature_png}" style="height:120px;max-width:100%;object-fit:contain;border:1px solid #e8e4dc;border-radius:8px;margin-top:6px"/>`:""}
+    <p style="font-size:11px;color:#64748b;margin-top:20px;line-height:1.6">Signature électronique simple au sens du règlement (UE) n° 910/2014 (eIDAS). Le devis reproduit dans ce document est la copie exacte présentée au signataire ; son empreinte SHA-256 permet d'en vérifier l'intégrité.</p>
+  </div>`;
+  let html=r.snapshot_html||"";
+  html=html.includes("</body>")?html.replace("</body>",bloc+`<script>window.onload=()=>{setTimeout(()=>window.print(),600);}<\/script></body>`):html+bloc;
+  w.document.open();w.document.write(html);w.document.close();
+}
+
 function devisDocHTML(d,impression){
   const cli=CLIENTS.find(c=>c.id===d.clientId);
   const ht=devisHT(d),mtva=devisTVA(d),ttc=devisTTC(d);
@@ -6312,6 +6488,7 @@ function modalEnvoiDoc(type,id){
       <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(TH)}</div>`:""}
     <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(fichier)}</b> joint automatiquement
       <button class="btn-sm" onclick="DOC_ENVOI['${type}'].apercu('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
+    ${type==="devis"&&!d.signatureElec&&!["refuse","transforme"].includes(d.statut)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ev-signer" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> ✍️ Ajouter un lien pour signer le devis en ligne</label>`:""}
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer"><input type="checkbox" id="ev-copie" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> M'envoyer une copie</label>
     <div id="ev-msg-err" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:13px"></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
@@ -6322,13 +6499,22 @@ async function envoyerDoc(type,id){
   const cli=T.client(d);
   const to=document.getElementById("ev-to").value.trim();
   const sujet=document.getElementById("ev-sujet").value.trim()||`${T.prefixe} ${d.num}`;
-  const texte=document.getElementById("ev-msg").value;
+  let texte=document.getElementById("ev-msg").value;
   const copie=document.getElementById("ev-copie").checked;
+  const avecLien=type==="devis"&&document.getElementById("ev-signer")&&document.getElementById("ev-signer").checked;
   const err=document.getElementById("ev-msg-err"), btn=document.getElementById("ev-btn");
   const erreur=m=>{err.textContent="⚠️ "+m; err.style.display="block"; btn.disabled=false; btn.textContent="✉️ Envoyer";};
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return erreur("Adresse e-mail du destinataire invalide.");
   err.style.display="none"; btn.disabled=true; btn.textContent="⟳ Préparation du PDF…";
   try{
+    if(avecLien){
+      btn.textContent="⟳ Création du lien de signature…";
+      const url=await creerLienSignature(d.id);
+      texte=texte.replace(/\s+$/,"");
+      const i=texte.search(/\n\s*Cordialement/i);
+      const ajout=`\n\n✍️ Pour accepter ce devis, vous pouvez le signer en ligne en quelques secondes :\n${url}`;
+      texte=i>=0?texte.slice(0,i)+ajout+texte.slice(i):texte+ajout;
+    }
     const pdf=await htmlVersPdfBase64(T.html(d));
     btn.textContent="⟳ Envoi…";
     const nomFichier=`${T.prefixe} ${d.num}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
@@ -7650,7 +7836,7 @@ function renderClientFiche(){
           <div style="flex:1;min-width:200px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <span style="font-weight:700;font-size:13px;color:${TH.c1}">${d.num}</span>
-              ${badge(expired?"Expiré":lbl,expired?"#f1f5f9":bg,expired?"#94a3b8":col)}
+              ${badge(expired?"Expiré":lbl,expired?"#f1f5f9":bg,expired?"#94a3b8":col)}${signBadge(d)}
             </div>
             <div style="font-size:13px;color:${TH.txt};margin-bottom:3px">${resume}</div>
             <div style="font-size:11px;color:${TH.txt}66">Émis le ${fDate(d.date)} · Valide jusqu'au ${fDate(d.validite)}</div>
@@ -7663,6 +7849,7 @@ function renderClientFiche(){
           <div style="display:flex;gap:5px;flex-shrink:0">
             <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" title="PDF" style="border-color:#86efac;background:#f0fdf4;color:#15803d">📄</button>
             <button class="btn-sm" onclick="modalEnvoiDevis('${d.id}')" title="Envoyer par e-mail" style="border-color:#bae6fd;background:#f0f9ff;color:#0369a1">✉️${(d.envois||[]).length?"✓":""}</button>
+            ${signBouton(d)}
             <button class="btn-sm" onclick="modalDocSigne('${c.id}','${d.id}')" title="Joindre le devis signé" style="border-color:#c4b5fd;background:#f5f3ff;color:#6d28d9">${(c.docsSignes||[]).some(x=>x.devisId===d.id)?"✅":"✍️"}</button>
             <button class="btn-sm btn-edit" onclick="modalDevis('${d.id}')">✏️</button>
             <button class="btn-sm btn-danger" onclick="delDevis('${d.id}')">🗑️</button>
@@ -8601,6 +8788,7 @@ function renderPage(){
   else if(currentPage==="stats")        c.innerHTML=renderStats();
   // Re-bind global functions for taches
   window.toggleTache=toggleTache;
+  if(["devis","client-fiche","db"].includes(currentPage)) setTimeout(()=>syncSignaturesDevis(),0);
   if(currentPage==="db") planifierMasonry();
   // Sauvegarde automatique des données à chaque rendu
   saveData();
