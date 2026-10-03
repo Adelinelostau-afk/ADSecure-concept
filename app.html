@@ -1113,7 +1113,8 @@ let RUBS=[
 const DEF_TH={...TH};
 // Profil AD Secure Concept : complète les réglages de ce compte s'il en manque (aucun effet sur les autres entreprises)
 const ADS_TH={nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
-  contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France"};
+  contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",
+  sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA · Domotique"}};
 function isADS(t){return /^AD\s*Secure/i.test((t&&t.nom)||"");}
 function mergeTH(saved){return Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);}
 function resetThemeColors(){const d=mergeTH({nom:TH.nom});["c1","c2","sidebar","bg","card","txt","sand","police","logoF"].forEach(k=>TH[k]=d[k]);applyTheme();renderNav();renderPanel();}
@@ -3574,6 +3575,49 @@ function delPaiement(id,idx){
 // Même code dans app.html (aperçu) et dans la fonction Supabase « relances-auto »
 // (envoi). Ne dépend de rien : reçoit les données, la date du jour et les clés
 // déjà envoyées, et renvoie la liste des e-mails à envoyer aujourd'hui.
+// ── SIGNATURE DES E-MAILS : même code dans app.html (aperçu) et dans « relances-auto » (envoi) ──
+const SigMail=(function(){
+  const e=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  function cfg(TH){
+    TH=TH||{};
+    const s=TH.sigMail||{};
+    return {actif:s.actif!==false&&!!TH.sigMail,nom:s.nom||"",poste:s.poste||"",
+      societe:s.societe||((TH.nom||"")+" "+(TH.sous||"")).trim(),
+      tel1:s.tel1!==undefined?s.tel1:(TH.tel||""),tel2:s.tel2||"",
+      email:s.email!==undefined?s.email:(TH.email||""),site:s.site!==undefined?s.site:(TH.site||""),
+      adresse:s.adresse!==undefined?s.adresse:(TH.adresse||""),logoUrl:s.logoUrl||"",slogan:s.slogan||"",
+      couleur:TH.c1||"#3286A0"};
+  }
+  // Nom placé sous « Cordialement, » dans le texte quand la signature riche est active
+  function court(TH){const c=cfg(TH);return c.nom||c.societe;}
+  function lienSite(u){u=String(u||"").trim();if(!u)return"";return /^https?:\/\//i.test(u)?u:"https://"+u;}
+  function siteAffiche(u){return String(u||"").replace(/^https?:\/\//i,"").replace(/\/$/,"");}
+  function html(TH){
+    const c=cfg(TH);if(!c.actif)return"";
+    const a=(href,txt)=>`<a href="${e(href)}" style="color:#1A2118;text-decoration:none">${e(txt)}</a>`;
+    const tels=[c.tel1,c.tel2].filter(Boolean).map(t=>a("tel:"+t.replace(/[^\d+]/g,""),t)).join(" &nbsp;·&nbsp; ");
+    const lignes=[
+      tels?`<div>📞 ${tels}</div>`:"",
+      c.email?`<div>✉️ ${a("mailto:"+c.email,c.email)}</div>`:"",
+      c.site?`<div>🌐 <a href="${e(lienSite(c.site))}" style="color:${c.couleur};text-decoration:none;font-weight:bold">${e(siteAffiche(c.site))}</a></div>`:"",
+      c.adresse?`<div style="color:#64748b;font-size:12px">📍 ${e(c.adresse)}</div>`:""
+    ].join("");
+    return `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#1A2118">
+<tr>${c.logoUrl?`<td style="padding:4px 16px 4px 0;border-right:3px solid ${c.couleur};vertical-align:middle"><img src="${e(c.logoUrl)}" alt="${e(c.societe)}" width="80" style="display:block;width:80px;height:auto;border:0"></td>`:""}
+<td style="padding:4px 0 4px ${c.logoUrl?16:0}px;vertical-align:middle${c.logoUrl?"":";border-left:3px solid "+c.couleur+";padding-left:14px"}">
+${c.nom?`<div style="font-weight:bold;font-size:15px">${e(c.nom)}</div>`:""}
+<div style="color:${c.couleur};font-weight:bold;font-size:${c.nom?12:15}px">${e([c.poste,c.societe].filter(Boolean).join(" · "))}</div>
+${c.slogan?`<div style="color:#64748b;font-size:12px;font-style:italic">${e(c.slogan)}</div>`:""}
+<div style="margin-top:6px">${lignes}</div>
+</td></tr></table>`;
+  }
+  function texte(TH){
+    const c=cfg(TH);if(!c.actif)return"";
+    return ["--",c.nom,[c.poste,c.societe].filter(Boolean).join(" · "),[c.tel1,c.tel2].filter(Boolean).join(" · "),c.email,siteAffiche(c.site),c.adresse].filter(Boolean).join("\n");
+  }
+  return {cfg,court,html,texte};
+})();
+
 const RelancesCore=(function(){
   const DEFAUT={
     actif:false,
@@ -3628,6 +3672,7 @@ const RelancesCore=(function(){
   }
 
   function signature(TH){
+    if(SigMail.cfg(TH).actif) return SigMail.court(TH); // la signature complète est ajoutée sous le message
     const nom=((TH.nom||"")+" "+(TH.sous||"")).trim();
     const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
     return nom+(coord?"\n"+coord:"");
@@ -6048,7 +6093,7 @@ function docValeursMail(type,d){
   const emetteur=`${TH.nom} ${TH.sous||""}`.trim();
   const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
   return {contact:cli&&cli.contact?cli.contact:"Madame, Monsieur",entreprise:cli?cli.nom:(d.client||""),numero:d.num,
-    montant:fMoney(T.ttc(d)),signature:emetteur+(coord?"\n"+coord:""),...T.valeurs(d)};
+    montant:fMoney(T.ttc(d)),signature:SigMail.cfg(TH).actif?SigMail.court(TH):emetteur+(coord?"\n"+coord:""),...T.valeurs(d)};
 }
 function docMessageDefaut(type,d){
   const T=DOC_ENVOI[type], v=docValeursMail(type,d);
@@ -6085,6 +6130,8 @@ function modalEnvoiDoc(type,id){
         <button class="btn-sm" id="ev-modele" onclick="garderModeleDoc('${type}','${d.id}')" title="Réutiliser ce texte pour les prochains envois">💾 Garder comme modèle</button>
         ${TH[T.cleModele]?`<button class="btn-sm" onclick="resetModeleDoc('${type}','${d.id}')">↺ Message d'origine</button>`:""}
       </div></div>
+    ${SigMail.cfg(TH).actif?`<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:2px 0 4px">Signature ajoutée sous le message</div>
+      <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(TH)}</div>`:""}
     <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(fichier)}</b> joint automatiquement
       <button class="btn-sm" onclick="DOC_ENVOI['${type}'].apercu('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer"><input type="checkbox" id="ev-copie" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> M'envoyer une copie</label>
@@ -8324,6 +8371,33 @@ function renderSettingsPanel(){
     </div>
   </div>`;
 }
+// ── Réglages de la signature des e-mails ──
+function sigSet(k,v){
+  if(!TH.sigMail||typeof TH.sigMail!=="object"){const c=SigMail.cfg(TH);TH.sigMail={actif:true,nom:"",poste:"",societe:c.societe,tel1:c.tel1,tel2:"",email:c.email,site:c.site,adresse:c.adresse,logoUrl:"",slogan:""};}
+  TH.sigMail[k]=v;saveData();
+  const ap=document.getElementById("sig-apercu");
+  if(ap) ap.innerHTML=SigMail.cfg(TH).actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée : seuls le nom de l'entreprise et ses coordonnées figurent en texte simple.</div>`;
+}
+function renderSigMailReglages(){
+  const c=SigMail.cfg(TH);
+  const v=x=>String(x==null?"":x).replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+  const f=(k,lbl,ph,type)=>`<div class="p-field"><label class="field-label">${lbl}</label><input type="${type||"text"}" value="${v(c[k])}" placeholder="${ph||""}" oninput="sigSet('${k}',this.value)"/></div>`;
+  return `<div class="section-sub" style="margin-bottom:8px">✉️ Signature des e-mails</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer"><input type="checkbox" ${c.actif?"checked":""} onchange="sigSet('actif',this.checked)" style="width:18px;height:18px;accent-color:${TH.c1}"/> Ajouter la signature (logo et coordonnées) à la fin de tous les e-mails envoyés par l'appli</label>
+    ${f("nom","Nom du signataire","Prénom NOM")}
+    ${f("poste","Fonction","Présidente, Gérant…")}
+    ${f("societe","Entreprise","")}
+    ${f("slogan","Accroche (facultatif)","Vidéosurveillance · IA · Domotique")}
+    ${f("tel1","Téléphone 1","0696 00 00 00","tel")}
+    ${f("tel2","Téléphone 2 (facultatif)","","tel")}
+    ${f("email","E-mail","contact@votre-entreprise.fr","email")}
+    ${f("site","Site internet","www.votre-entreprise.fr")}
+    ${f("adresse","Adresse","")}
+    ${f("logoUrl","Adresse web du logo","https://www.votre-entreprise.fr/logo.png","url")}
+    <div style="font-size:11px;color:#94a3b8;margin:-6px 0 12px;line-height:1.4">Le logo doit être une image en ligne (lien https) : les messageries n'affichent pas les images intégrées.</div>
+    <div class="field-label" style="margin-bottom:4px">Aperçu</div>
+    <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>`;
+}
 function renderThemePanel(){
   return`<div class="panel-overlay">
     <div class="panel-bg" onclick="closePanel()"></div>
@@ -8347,6 +8421,8 @@ function renderThemePanel(){
         <div class="p-field"><label class="field-label">SIRET</label><input type="text" value="${TH.siret||''}" placeholder="000 000 000 00000" oninput="TH.siret=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">N&deg; TVA intracom.</label><input type="text" value="${TH.tvaIntra||''}" placeholder="FR00000000000" oninput="TH.tvaIntra=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Mentions l&eacute;gales PDF</label><input type="text" value="${TH.mentionsLegales||''}" placeholder="Auto-entrepreneur &middot; Dispen..." oninput="TH.mentionsLegales=this.value;saveData()"/></div>
+        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
+        ${renderSigMailReglages()}
         <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
         <div class="section-sub" style="margin-bottom:8px">Contrat de maintenance vidéosurveillance</div>
         <div class="p-field"><label class="field-label">Si&egrave;ge social (contrat)</label><input type="text" value="${TH.contratSiege||''}" oninput="TH.contratSiege=this.value;saveData()"/></div>
