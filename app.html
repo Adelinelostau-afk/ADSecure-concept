@@ -1126,7 +1126,8 @@ const DEF_TH={...TH};
 const ADS_TH={nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
   contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",horaires:"Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30",
   sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"},
-  sigMailUsers:{"8d0d5004-4a33-46da-8b0f-76e97be2894c":{nom:"Daniel VICTORNI",poste:"Directeur",tel1:"0696 43 95 84",tel2:"",email:""}}};
+  sigMailUsers:{"8d0d5004-4a33-46da-8b0f-76e97be2894c":{nom:"Daniel VICTORNI",poste:"Directeur",tel1:"0696 43 95 84",tel2:"",email:""},
+    "f9d1e601-8ef2-4371-bd02-8c0592870672":{nom:"Adeline LOSTAU",poste:"Présidente",tel1:"0696 34 23 04",tel2:"",email:""}}};
 function isADS(t){return /^AD\s*Secure/i.test((t&&t.nom)||"");}
 function mergeTH(saved){
   const t=Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);
