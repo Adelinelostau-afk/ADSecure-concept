@@ -9022,8 +9022,8 @@ function openPanel(id){
   activePanel=id;
   renderPanel();
   // Les profils viennent de Supabase : on affiche le panneau puis on rafraîchit.
-  if(id==="settings"&&hasRole("admin")){
-    loadProfiles().then(()=>{ if(activePanel==="settings"){ renderPanel(); } });
+  if((id==="settings"||id==="emails")&&hasRole("admin")){
+    loadProfiles().then(()=>{ if(activePanel===id){ renderPanel(); } });
   }
   if(id==="relances"){
     syncRelancesLog().then(()=>{ if(activePanel==="relances"){ renderPanel(); } });
@@ -9033,6 +9033,9 @@ function closePanel(){activePanel=null;document.getElementById("panel-container"
 function renderPanel(){
   const pc=document.getElementById("panel-container");
   if(activePanel==="theme")    pc.innerHTML=renderThemePanel();
+  else if(activePanel==="entreprise") pc.innerHTML=renderEntreprisePanel();
+  else if(activePanel==="emails")     pc.innerHTML=renderEmailsPanel();
+  else if(activePanel==="contrats")   pc.innerHTML=renderContratsPanel();
   else if(activePanel==="rubs")     pc.innerHTML=renderRubsPanel();
   else if(activePanel==="settings") pc.innerHTML=renderSettingsPanel();
   else if(activePanel==="journal")  pc.innerHTML=renderJournalPanel();
@@ -9382,6 +9385,18 @@ async function sendInvite(){
   }
 }
 
+function reglageItem(ico,titre,sous,panel){
+  return `<button onclick="closePanel();openPanel('${panel}')" style="width:100%;padding:11px 14px;border:none;border-bottom:1px solid #f1f5f9;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Inter',sans-serif;text-align:left"
+    onmouseover="this.style.background='${TH.c1}08'" onmouseout="this.style.background='#fff'">
+    <span style="font-size:19px;width:26px;text-align:center">${ico}</span>
+    <span style="flex:1;min-width:0"><span style="display:block;font-weight:700;font-size:13.5px;color:#0f1b35">${titre}</span><span style="display:block;font-size:11.5px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sous}</span></span>
+    <span style="color:#cbd5e1;font-size:18px">›</span></button>`;
+}
+function reglageGroupe(titre,items){
+  const L=items.filter(Boolean);if(!L.length)return "";
+  return `<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:8px">${titre}</div>
+    <div style="border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:-1px">${L.join("")}</div></div>`;
+}
 function renderSettingsPanel(){
   const u=currentUser||{nom:"—",login:"—",email:"",role:"—"};
   return`<div class="panel-overlay">
@@ -9398,9 +9413,9 @@ function renderSettingsPanel(){
 
         <!-- Logo -->
         <div style="text-align:center;margin-bottom:20px">
-          <div onclick="openPanel('theme')" style="cursor:pointer;display:inline-block;position:relative">
-            ${TH.logo
-              ?`<img src="${TH.logo}" style="width:80px;height:80px;object-fit:contain;border-radius:50%;border:3px solid ${TH.c1};padding:8px;background:#f8fafc;filter:${TH.logoF}"/>`
+          <div onclick="closePanel();openPanel('entreprise')" style="cursor:pointer;display:inline-block;position:relative">
+            ${thLogo()
+              ?`<img src="${thLogo()}" style="width:80px;height:80px;object-fit:contain;border-radius:50%;border:3px solid ${TH.c1};padding:8px;background:#f8fafc;filter:${TH.logo?TH.logoF:"none"}"/>`
               :`<div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${TH.c1},${TH.c2});display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto">🛡️</div>`
             }
             <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:${TH.c1};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff">✏️</div>
@@ -9424,59 +9439,24 @@ function renderSettingsPanel(){
         </div>
 
         <!-- Navigation réglages -->
-        <div style="margin-bottom:16px">
-          <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px">Personnalisation</div>
-          <div style="display:grid;gap:8px">
-            <button onclick="closePanel();openPanel('theme')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">🎨</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Apparence</div><div style="font-size:11px;color:#64748b">Couleurs, police, logo, nom</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>
-            <button onclick="closePanel();openPanel('rubs')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">📋</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Rubriques</div><div style="font-size:11px;color:#64748b">Ordre, icônes, visibilité</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>
-            <button onclick="closePanel();openPanel('docs')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">📚</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Historique des documents</div><div style="font-size:11px;color:#64748b">${DOCSHIST.length} document(s) généré(s)</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>
-            ${hasRole("admin")?`<button onclick="closePanel();openPanel('journal')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">📜</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Journal d'activité</div><div style="font-size:11px;color:#64748b">${JOURNAL.length} événement(s) enregistré(s)</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>
-            <button onclick="closePanel();openPanel('relances')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">🔔</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Relances automatiques</div><div style="font-size:11px;color:#64748b">${RelancesCore.config(TH).actif?"Activées · envoi chaque matin":"Désactivées"}</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>
-            <button onclick="closePanel();openPanel('backups')" style="padding:12px 16px;border-radius:10px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;font-family:'Lora',Georgia,serif;text-align:left;transition:all 0.15s"
-              onmouseover="this.style.borderColor='${TH.c1}';this.style.background='${TH.c1}08'"
-              onmouseout="this.style.borderColor='#e2e8f0';this.style.background='#fff'">
-              <span style="font-size:20px">🕓</span>
-              <div><div style="font-weight:700;font-size:13px;color:#0f1b35">Historique des sauvegardes</div><div style="font-size:11px;color:#64748b">Restaurer une version antérieure (cloud)</div></div>
-              <span style="margin-left:auto;color:#94a3b8">›</span>
-            </button>`:""}
-          </div>
-        </div>
+        ${reglageGroupe("Entreprise",[
+          reglageItem("🏢","Informations de l'entreprise","Nom, logo, coordonnées, mentions légales, comptabilité","entreprise"),
+          reglageItem("🎨","Apparence","Thème, couleurs, police","theme"),
+          reglageItem("📋","Menu","Ordre, icônes et rubriques affichées","rubs")])}
+        ${reglageGroupe("Documents et e-mails",[
+          reglageItem("✉️","E-mails et signatures",SigMail.cfg(TH).actif?"Signature avec logo activée":"Signature désactivée","emails"),
+          hasRole("admin")?reglageItem("🔔","Relances automatiques",RelancesCore.config(TH).actif?"Activées · envoi chaque matin":"Désactivées","relances"):"",
+          reglageItem("📄","Contrats de maintenance","Cocontractant, engagements, grille tarifaire","contrats"),
+          reglageItem("📚","Historique des documents",DOCSHIST.length+" document(s) généré(s)","docs")])}
+        ${hasRole("admin")?reglageGroupe("Sécurité et données",[
+          reglageItem("📜","Journal d'activité",JOURNAL.length+" événement(s) enregistré(s)","journal"),
+          reglageItem("🕓","Sauvegardes","Restaurer une version antérieure (cloud)","backups")]):""}
 
         <!-- Gestion utilisateurs (admin only) -->
         ${hasRole("admin")?`
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em">Utilisateurs (${PROFILES.length})</div>
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em">Équipe · ${PROFILES.length} utilisateur(s)</div>
             <button onclick="modalInviteUser()" style="padding:5px 10px;border-radius:7px;border:none;background:#3286A0;color:#fff;cursor:pointer;font-size:12px;font-weight:700;font-family:'Lora',Georgia,serif">＋ Ajouter</button>
           </div>
           <div style="background:#f8fafc;border-radius:10px;overflow:hidden">
@@ -9573,48 +9553,105 @@ function renderSigMailReglages(){
     <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>
     ${c.actif?renderSigUsers():""}`;
 }
-function renderThemePanel(){
-  return`<div class="panel-overlay">
+function panelShell(icone,titre,corps,pied){
+  return `<div class="panel-overlay">
     <div class="panel-bg" onclick="closePanel()"></div>
     <div class="panel">
       <div class="panel-head">
-        <div style="display:flex;align-items:center;gap:10px"><button onclick="closePanel();openPanel('settings')" style="width:30px;height:30px;border-radius:8px;border:1.5px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:#64748b">←</button><div class="panel-title">🎨 Apparence</div></div>
+        <div style="display:flex;align-items:center;gap:10px"><button onclick="closePanel();openPanel('settings')" style="width:30px;height:30px;border-radius:8px;border:1.5px solid #e2e8f0;background:#f8fafc;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:#64748b">←</button><div class="panel-title">${icone} ${titre}</div></div>
         <button class="panel-close" onclick="closePanel()">✕</button>
       </div>
-      <div class="panel-body">
-        <div style="margin-bottom:14px">
-          <label class="field-label">Thèmes prédéfinis</label>
-          <div class="preset-grid">${PRESETS.map((p,i)=>`<button class="preset-btn" onclick="applyPreset(${i})" style="background:${p.c1}11;border-color:${p.c1}33"><div class="preset-dots"><div class="preset-dot" style="background:${p.sb}"></div><div class="preset-dot" style="background:${p.c1}"></div><div class="preset-dot" style="background:${p.c2}"></div></div>${p.label}</button>`).join("")}</div>
-        </div>
-        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
+      <div class="panel-body">${corps}</div>
+      <div class="panel-footer">${pied||`<button class="btn-reset" onclick="closePanel();openPanel('settings')">← Réglages</button><button class="btn-apply" onclick="closePanel()">Terminé ✓</button>`}</div>
+    </div>
+  </div>`;
+}
+function reglageTitre(t,sous){return `<div style="font-size:11px;font-weight:800;color:${TH.c1};text-transform:uppercase;letter-spacing:0.08em;margin:18px 0 10px;padding-bottom:6px;border-bottom:1.5px solid ${TH.c1}22">${t}${sous?`<div style="font-size:11px;font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;margin-top:3px">${sous}</div>`:""}</div>`;}
+// 🏢 Entreprise : identité, coordonnées, mentions légales, comptabilité
+function renderEntreprisePanel(){
+  return panelShell("🏢","Entreprise",`
+    ${reglageTitre("Identité","Nom et logo affichés dans l'appli et sur les documents")}
         <div class="p-field"><label class="field-label">Nom</label><input type="text" value="${TH.nom}" oninput="TH.nom=this.value;applyTheme()"/></div>
         <div class="p-field"><label class="field-label">Sous-titre</label><input type="text" value="${TH.sous}" oninput="TH.sous=this.value;applyTheme()"/></div>
+        <div class="p-field">
+          <label class="field-label">Logo</label>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+            ${TH.logo?`<img src="${TH.logo}" style="width:50px;height:50px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;padding:4px;background:#f8fafc;filter:${TH.logoF}"/>`:`<div style="width:50px;height:50px;border-radius:8px;border:1.5px dashed #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:center;font-size:22px">🖼️</div>`}
+            <label class="logo-upload">📤 ${TH.logo?"Changer":"Ajouter"}<input type="file" accept="image/*" onchange="handleLogo(event)" style="display:none"/></label>
+          </div>
+          ${TH.logo?`<select onchange="TH.logoF=this.value;applyTheme()"><option value="none">Original</option><option value="brightness(0) invert(1)">Blanc</option><option value="brightness(0)">Noir</option><option value="brightness(0) saturate(100%) invert(45%) sepia(60%) saturate(400%) hue-rotate(165deg)">Bleu</option></select>`:""}
+        </div>
+
+    ${reglageTitre("Coordonnées")}
         <div class="p-field"><label class="field-label">Adresse</label><input type="text" value="${TH.adresse||''}" placeholder="Adresse de votre entreprise" oninput="TH.adresse=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Email</label><input type="email" value="${TH.email||''}" placeholder="contact@votre-entreprise.fr" oninput="TH.email=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Site web</label><input type="url" value="${TH.site||''}" placeholder="https://www.votre-entreprise.fr" oninput="TH.site=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">T&eacute;l&eacute;phone</label><input type="text" value="${TH.tel||''}" placeholder="06 00 00 00 00" oninput="TH.tel=this.value;saveData()"/></div>
+        <div class="p-field"><label class="field-label">Horaires d'ouverture / SAV</label><input type="text" value="${(TH.horaires||'').replace(/"/g,'&quot;')}" placeholder="Lun–ven 8h30–16h" oninput="TH.horaires=this.value;saveData()"/></div>
+    ${reglageTitre("Mentions légales","Reprises en pied de page des devis et factures")}
         <div class="p-field"><label class="field-label">SIRET</label><input type="text" value="${TH.siret||''}" placeholder="000 000 000 00000" oninput="TH.siret=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">N&deg; TVA intracom.</label><input type="text" value="${TH.tvaIntra||''}" placeholder="FR00000000000" oninput="TH.tvaIntra=this.value;saveData()"/></div>
+        <div class="p-field"><label class="field-label">Mentions l&eacute;gales PDF</label><input type="text" value="${TH.mentionsLegales||''}" placeholder="Auto-entrepreneur &middot; Dispen..." oninput="TH.mentionsLegales=this.value;saveData()"/></div>
+
+    ${reglageTitre("Comptabilité")}
         <div class="p-field"><label class="field-label">D&eacute;marrage de la comptabilit&eacute;</label>
           <div style="display:flex;gap:6px"><input type="date" value="${TH.compteDepuis||''}" onchange="TH.compteDepuis=this.value;saveData();renderPage();renderNav()" style="flex:1"/>
           ${TH.compteDepuis?`<button class="btn-sm" onclick="TH.compteDepuis='';saveData();renderPanel();renderPage();renderNav()">Effacer</button>`:""}</div>
           <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">Factures, r&egrave;glements, caisse, banque et statistiques ant&eacute;rieurs &agrave; cette date sont ignor&eacute;s dans les chiffres (ils restent consultables dans leurs listes).</div></div>
-        <div class="p-field"><label class="field-label">Mentions l&eacute;gales PDF</label><input type="text" value="${TH.mentionsLegales||''}" placeholder="Auto-entrepreneur &middot; Dispen..." oninput="TH.mentionsLegales=this.value;saveData()"/></div>
-        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
-        ${renderSigMailReglages()}
-        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
-        <div class="section-sub" style="margin-bottom:8px">Contrat de maintenance vidéosurveillance</div>
+`);
+}
+// 🎨 Apparence : thème, couleurs, police
+function renderThemePanel(){
+  return panelShell("🎨","Apparence",`
+        <div style="margin-bottom:14px">
+          <label class="field-label">Thèmes prédéfinis</label>
+          <div class="preset-grid">${PRESETS.map((p,i)=>`<button class="preset-btn" onclick="applyPreset(${i})" style="background:${p.c1}11;border-color:${p.c1}33"><div class="preset-dots"><div class="preset-dot" style="background:${p.sb}"></div><div class="preset-dot" style="background:${p.c1}"></div><div class="preset-dot" style="background:${p.c2}"></div></div>${p.label}</button>`).join("")}</div>
+        </div>
+
+    ${reglageTitre("Couleurs")}
+        ${[["Couleur principale","c1"],["Couleur secondaire","c2"],["Fond sidebar","sidebar"],["Fond page","bg"],["Fond cartes","card"],["Texte","txt"],["Accent","sand"]].map(([l,k])=>`
+          <div class="p-field"><label class="field-label">${l}</label><div class="color-row">
+            <input type="color" value="${TH[k]}" oninput="TH.${k}=this.value;applyTheme();renderNav()"/>
+            <input type="text" value="${TH[k]}" oninput="TH.${k}=this.value;applyTheme();renderNav()"/>
+          </div></div>`).join("")}
+
+    ${reglageTitre("Police et aperçu")}
+        <div class="p-field"><label class="field-label">Police</label><select onchange="TH.police=this.value;applyTheme();renderNav()">
+          ${POLICES.map(p=>`<option${TH.police===p?" selected":""}>${p}</option>`).join("")}
+        </select></div>
+        <div class="sidebar-preview" style="background:${TH.sidebar}">
+          ${TH.logo?`<img src="${TH.logo}" style="width:38px;height:38px;object-fit:contain;margin:0 auto 8px;display:block;filter:${TH.logoF}"/>`:""}
+          <div style="color:${TH.sand};font-weight:700;font-size:17px">${TH.nom}</div>
+          <div style="color:${TH.c2};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;margin-top:3px">${TH.sous}</div>
+        </div>
+      </div>
+`,
+    `<button class="btn-reset" onclick="resetThemeColors()">↺ Couleurs d'origine</button><button class="btn-apply" onclick="closePanel()">Terminé ✓</button>`);
+}
+// ✉️ E-mails : signature de l'entreprise + signatures personnelles
+function renderEmailsPanel(){
+  return panelShell("✉️","E-mails et signatures",`${renderSigMailReglages()}
+    ${hasRole("admin")?`<button onclick="closePanel();openPanel('relances')" class="btn-sm" style="width:100%;margin-top:6px;padding:10px">🔔 Régler les relances automatiques ›</button>`:""}`);
+}
+// 📄 Contrats de maintenance
+function renderContratsPanel(){
+  return panelShell("📄","Contrats de maintenance",`
+    ${reglageTitre("Cocontractant","Informations reprises dans les contrats générés")}
         <div class="p-field"><label class="field-label">Si&egrave;ge social (contrat)</label><input type="text" value="${TH.contratSiege||''}" oninput="TH.contratSiege=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">SIREN (contrat)</label><input type="text" value="${TH.contratSiren||''}" oninput="TH.contratSiren=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Repr&eacute;sentant</label><input type="text" value="${TH.contratRepresentant||''}" oninput="TH.contratRepresentant=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Qualit&eacute; du repr&eacute;sentant</label><input type="text" value="${TH.contratQualite||''}" oninput="TH.contratQualite=this.value;saveData()"/></div>
+
+    ${reglageTitre("Engagements et conditions")}
         <div class="p-field"><label class="field-label">D&eacute;lai panne bloquante</label><input type="text" value="${TH.contratDelaiBloquant||''}" oninput="TH.contratDelaiBloquant=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">D&eacute;lai panne partielle</label><input type="text" value="${TH.contratDelaiPartiel||''}" oninput="TH.contratDelaiPartiel=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Tribunal comp&eacute;tent (clients pros commer&ccedil;ants)</label><input type="text" value="${TH.contratTribunal||''}" oninput="TH.contratTribunal=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">M&eacute;diateur de la consommation (particuliers)</label><input type="text" value="${(TH.contratMediateur||'').replace(/"/g,'&quot;')}" placeholder="Nom, adresse, site internet" oninput="TH.contratMediateur=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Indemnit&eacute; r&eacute;siliation anticip&eacute;e particulier (% des mensualit&eacute;s restantes)</label><input type="number" min="0" max="100" value="${TH.contratIndemnitePart!=null?TH.contratIndemnitePart:20}" oninput="TH.contratIndemnitePart=Number(this.value);saveData()"/></div>
         <div class="p-field"><label class="field-label">Texte l&eacute;gal &mdash; Annexe 4 (particuliers)</label><div style="font-size:11px;color:#94a3b8;margin-bottom:4px;line-height:1.4">Copiez depuis L&eacute;gifrance le texte int&eacute;gral de l&rsquo;article L. 215-4 du Code de la consommation et des articles qu&rsquo;il cite, puis collez-le ici (un paragraphe par ligne).</div><textarea rows="6" style="width:100%;font-size:12px" oninput="TH.contratTexteL215=this.value;saveData()">${ctrEsc(TH.contratTexteL215||"")}</textarea></div>
-        <div class="p-field"><label class="field-label">Grille tarifaire (forfaits)</label>
+
+    ${reglageTitre("Grille tarifaire","Mini et maxi de caméras, prix HT par mois")}
+        <div class="p-field">
           ${(TH.contratForfaits||[]).map((f,i)=>`
             <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
               <input type="text" value="${f.label}" style="flex:1.3" oninput="TH.contratForfaits[${i}].label=this.value;saveData()" placeholder="Nom"/>
@@ -9625,36 +9662,7 @@ function renderThemePanel(){
               <span style="color:#94a3b8;font-size:11px">€/mois</span>
             </div>`).join("")}
         </div>
-        <div class="p-field">
-          <label class="field-label">Logo</label>
-          <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
-            ${TH.logo?`<img src="${TH.logo}" style="width:50px;height:50px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;padding:4px;background:#f8fafc;filter:${TH.logoF}"/>`:`<div style="width:50px;height:50px;border-radius:8px;border:1.5px dashed #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:center;font-size:22px">🖼️</div>`}
-            <label class="logo-upload">📤 ${TH.logo?"Changer":"Ajouter"}<input type="file" accept="image/*" onchange="handleLogo(event)" style="display:none"/></label>
-          </div>
-          ${TH.logo?`<select onchange="TH.logoF=this.value;applyTheme()"><option value="none">Original</option><option value="brightness(0) invert(1)">Blanc</option><option value="brightness(0)">Noir</option><option value="brightness(0) saturate(100%) invert(45%) sepia(60%) saturate(400%) hue-rotate(165deg)">Bleu</option></select>`:""}
-        </div>
-        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
-        ${[["Couleur principale","c1"],["Couleur secondaire","c2"],["Fond sidebar","sidebar"],["Fond page","bg"],["Fond cartes","card"],["Texte","txt"],["Accent","sand"]].map(([l,k])=>`
-          <div class="p-field"><label class="field-label">${l}</label><div class="color-row">
-            <input type="color" value="${TH[k]}" oninput="TH.${k}=this.value;applyTheme();renderNav()"/>
-            <input type="text" value="${TH[k]}" oninput="TH.${k}=this.value;applyTheme();renderNav()"/>
-          </div></div>`).join("")}
-        <hr style="border:none;border-top:1px solid #f1f5f9;margin:4px 0 14px"/>
-        <div class="p-field"><label class="field-label">Police</label><select onchange="TH.police=this.value;applyTheme();renderNav()">
-          ${POLICES.map(p=>`<option${TH.police===p?" selected":""}>${p}</option>`).join("")}
-        </select></div>
-        <div class="sidebar-preview" style="background:${TH.sidebar}">
-          ${TH.logo?`<img src="${TH.logo}" style="width:38px;height:38px;object-fit:contain;margin:0 auto 8px;display:block;filter:${TH.logoF}"/>`:""}
-          <div style="color:${TH.sand};font-weight:700;font-size:17px">${TH.nom}</div>
-          <div style="color:${TH.c2};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;margin-top:3px">${TH.sous}</div>
-        </div>
-      </div>
-      <div class="panel-footer">
-        <button class="btn-reset" onclick="resetThemeColors()">↺ Réinitialiser</button>
-        <button class="btn-apply" onclick="closePanel()">Appliquer ✓</button>
-      </div>
-    </div>
-  </div>`;
+`);
 }
 function renderRubsPanel(){
   const sorted=[...RUBS].sort((a,b)=>a.ordre-b.ordre);
