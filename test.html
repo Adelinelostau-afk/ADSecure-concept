@@ -618,9 +618,12 @@ if(/\/test[^/]*\.html$/i.test(location.pathname)){
   document.addEventListener("DOMContentLoaded",function(){
     var b=document.createElement("div");
     b.id="bandeau-test";
-    b.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#ea580c;color:#fff;font:600 12px/1.3 Inter,-apple-system,sans-serif;padding:7px 12px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 -2px 8px rgba(0,0,0,.2)";
-    b.innerHTML='🧪 VERSION TEST — vos essais ici ne modifient pas les vraies données. Les e-mails partent vers votre propre adresse.'
-      +' <button onclick="copierVraiesDonneesVersTest(true)" style="background:#fff;color:#ea580c;border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">↻ Repartir des vraies données</button>';
+    b.style.cssText="position:fixed;top:4px;left:50%;transform:translateX(-50%);z-index:99999;background:#ea580c;color:#fff;font:700 11px/1 Inter,-apple-system,sans-serif;padding:6px 12px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;white-space:nowrap";
+    b.textContent="🧪 VERSION TEST";
+    b.title="Vos essais ici ne modifient pas les vraies données";
+    b.onclick=function(){
+      if(confirm("🧪 Version de test\n\nVos essais ici ne modifient pas les vraies données, et les e-mails partent vers votre propre adresse.\n\nVoulez-vous remplacer les données de test par une copie des vraies données actuelles ?")) copierVraiesDonneesVersTest(false).then(function(ok){ if(ok){ applyTheme();renderNav();renderPage(); alert("✓ Données de test remplacées par une copie des vraies données."); } else alert("Copie impossible. Connectez-vous d'abord."); });
+    };
     document.body.appendChild(b);
   });
 }
@@ -847,7 +850,7 @@ async function doLogin(){
   loadWidgets();   // disposition du tableau de bord propre à cet utilisateur
   renderNav();renderPage();
   // Récupérer les données du cloud après connexion
-  syncPull().then(ok=>{ if(ok){ applyTheme(); renderNav(); renderPage(); } });
+  syncPull().then(ok=>{ if(ok){ applyTheme(); renderNav(); renderPage(); verifierMetier(); } });
 }
 async function doLogout(){
   logActivity("Déconnexion","");
@@ -1137,7 +1140,7 @@ let RUBS=[
 ];
 const DEF_TH={...TH};
 // Profil AD Secure Concept : complète les réglages de ce compte s'il en manque (aucun effet sur les autres entreprises)
-const ADS_TH={nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
+const ADS_TH={metier:"securite",nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
   contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",horaires:"Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30",
   sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"},
   sigMailUsers:{"8d0d5004-4a33-46da-8b0f-76e97be2894c":{nom:"Daniel VICTORNI",poste:"Directeur",tel1:"0696 43 95 84",tel2:"",email:""},
@@ -1271,6 +1274,7 @@ function applyDataObject(d){
   if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
   if(d.INTERVENTIONS && Array.isArray(d.INTERVENTIONS)) INTERVENTIONS=d.INTERVENTIONS;
   if(d.RAPPRO && typeof d.RAPPRO==="object") RAPPRO=d.RAPPRO;
+  appliquerMetier();
 }
 
 function setSyncBadge(status){
@@ -2042,14 +2046,14 @@ function modalClient(id){
     </div>
     <div class="field"><label>Relance prévue</label><input type="date" id="c-relance" value="${c.dateRelance||""}"/>${c.relanceEnvoyee&&c.relanceEnvoyee===c.dateRelance?`<div style="font-size:11px;color:#15803d;margin-top:4px">✅ Relance automatique envoyée</div>`:""}</div>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:6px 0"/>
-    <div class="section-sub" style="margin-bottom:4px">Pour le contrat de maintenance vidéosurveillance</div>
+    <div class="section-sub" style="margin-bottom:4px">Pour le contrat de maintenance</div>
     <div class="field-row">
       <div class="field"><label>Forme juridique</label><input id="c-forme" value="${(c.formeJuridique||"").replace(/"/g,'&quot;')}" placeholder="SAS, SARL… (laisser vide si particulier)"/></div>
       <div class="field"><label>SIRET</label><input id="c-siret" value="${(c.siret||"").replace(/"/g,'&quot;')}" placeholder="000 000 000 00000"/></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Qualité du représentant</label><input id="c-qualite" value="${(c.representantQualite||"").replace(/"/g,'&quot;')}" placeholder="Gérant, Directeur…"/></div>
-      <div class="field"><label>Nombre de caméras</label><input type="number" min="0" id="c-nbcam" value="${c.nbCameras||""}" placeholder="Ex : 6"/></div>
+      <div class="field"><label>Nombre de ${MP().unite[1]}</label><input type="number" min="0" id="c-nbcam" value="${c.nbCameras||""}" placeholder="Ex : 6"/></div>
     </div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
      <button class="btn-save" style="background:${TH.c1}" onclick="saveClient('${id||""}')">Enregistrer</button>`
@@ -3955,7 +3959,7 @@ const RelancesCore=(function(){
         const moyens=`par lettre recommandée avec accusé de réception adressée à ${prest}${TH.contratSiege?", "+TH.contratSiege:""}${TH.email?", ou par courrier électronique à "+TH.email:""}`;
         const prix=Number(x.prixHT||0),prixTTC=Math.round(prix*1.085*100)/100;
         const sujet="Information sur la reconduction de votre contrat de maintenance";
-        const texte=`Madame, Monsieur,\n\nLe contrat de maintenance de votre système de vidéosurveillance${x.forfaitLabel?` (forfait ${x.forfaitLabel})`:""}, conclu le ${dateLongue(x.dateSignature)}, arrive au terme de sa période en cours le ${dateLongue(i.ech)}.\n\nSauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${euros(prix)} HT, soit ${euros(prixTTC)} TTC par mois.\n\nConformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard le :\n\n    ${dateLongue(i.limite).toUpperCase()}\n\nSi vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer la maintenance de votre installation, dont les visites préventives semestrielles.\n\nNous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${TH.contratRepresentant||""}${TH.contratQualite?", "+TH.contratQualite:""}\n${sig}`;
+        const texte=`Madame, Monsieur,\n\nLe contrat de maintenance de votre ${TH.systemeLibelle||"système de vidéosurveillance"}${x.forfaitLabel?` (forfait ${x.forfaitLabel})`:""}, conclu le ${dateLongue(x.dateSignature)}, arrive au terme de sa période en cours le ${dateLongue(i.ech)}.\n\nSauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${euros(prix)} HT, soit ${euros(prixTTC)} TTC par mois.\n\nConformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard le :\n\n    ${dateLongue(i.limite).toUpperCase()}\n\nSi vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer la maintenance de votre installation, dont les visites préventives semestrielles.\n\nNous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${TH.contratRepresentant||""}${TH.contratQualite?", "+TH.contratQualite:""}\n${sig}`;
         ajouter({cle:`l215:${x.id}:${i.ech}`,type:"reconduction",refId:x.id,clientId:c.id,ech:i.ech,libelle:"Information reconduction",client:c.nom,sujet,texte},c.email);
       }));
     }
@@ -3966,7 +3970,7 @@ const RelancesCore=(function(){
         const c=trouverClient(data,e.clientId,e.client);
         const contact=c&&c.contact?c.contact:"Madame, Monsieur";
         const sujet=`Rappel : visite de maintenance le ${dateLongue(e.date)}`;
-        const texte=`Bonjour ${contact},\n\nDans le cadre de votre contrat de maintenance, notre technicien passera pour la visite préventive de votre système de vidéosurveillance le ${dateLongue(e.date)}${e.heure?" à "+e.heure.replace(":","h"):""}.\n\nMerci de vous assurer que l'accès au matériel (enregistreur, caméras) sera possible. Si ce créneau ne vous convient pas, contactez-nous pour le déplacer.\n\nCordialement,\n${sig}`;
+        const texte=`Bonjour ${contact},\n\nDans le cadre de votre contrat de maintenance, notre technicien passera pour la visite préventive de votre ${TH.systemeLibelle||"système de vidéosurveillance"} le ${dateLongue(e.date)}${e.heure?" à "+e.heure.replace(":","h"):""}.\n\nMerci de vous assurer que ${TH.accesMateriel||"l'accès au matériel (enregistreur, caméras)"} sera possible. Si ce créneau ne vous convient pas, contactez-nous pour le déplacer.\n\nCordialement,\n${sig}`;
         ajouter({cle:`visite:${e.id}:${e.date}`,type:"visite",refId:e.id,libelle:"Rappel de visite",client:(c&&c.nom)||e.client||"",sujet,texte},c&&c.email);
       });
     }
@@ -4375,7 +4379,7 @@ function renderTransWidget(){
       </div>
       <div style="padding:14px 18px">
         <div id="trans-types" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:9px;margin-bottom:9px">${renderTransTypeChips()}</div>
-        <textarea id="trans-input" onkeydown="transKey(event)" placeholder="Ex : Mme Dupont contactée ce jour — souhaite un devis pour 2 caméras extérieures." style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13.5px;font-family:'Inter',sans-serif;outline:none;min-height:84px;resize:vertical;margin-bottom:8px"></textarea>
+        <textarea id="trans-input" onkeydown="transKey(event)" placeholder="Ex : ${pE(MP().ex.trans)}" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13.5px;font-family:'Inter',sans-serif;outline:none;min-height:84px;resize:vertical;margin-bottom:8px"></textarea>
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
           <select id="trans-client" style="flex:1;min-width:150px;padding:8px 11px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:12.5px;background:#fff;font-family:'Inter',sans-serif">
             <option value="">— Sans client lié —</option>
@@ -5636,7 +5640,7 @@ function editerProduit(id,retour){
       ${champ("Référence",`<input id="pr-ref" value="${v.ref}" placeholder="CAM-4MP-B"/>`)}
       ${champ("Catégorie",`<select id="pr-cat">${CAT_PRODUITS.map(c=>`<option${v.cat===c?" selected":""}>${c}</option>`).join("")}</select>`)}
     </div>
-    ${champ("Désignation *",`<input id="pr-nom" value="${v.nom.replace(/"/g,"&quot;")}" placeholder="Caméra IP bullet 4MP"/>`)}
+    ${champ("Désignation *",`<input id="pr-nom" value="${v.nom.replace(/"/g,"&quot;")}" placeholder="${pE(MP().ex.produit)}"/>`)}
     ${champ("Description",`<textarea id="pr-desc" rows="2" placeholder="Caractéristiques, usage, spécificités techniques…">${v.desc}</textarea>`)}
     <div style="display:flex;gap:10px">
       ${champ("Marque",`<input id="pr-marque" value="${v.marque.replace(/"/g,"&quot;")}" placeholder="Hikvision"/>`)}
@@ -7237,13 +7241,280 @@ function glcImprimer(clientId){
 }
 
 // ══════════════════════════════════════════════════════════
+// ── PROFILS MÉTIER ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// Chaque abonné choisit son métier : vocabulaire, types de matériel, listes de contrôle,
+// contrat de maintenance et dossier de remise s'adaptent. Les listes restent modifiables
+// dans Réglages › Métier (TH.metierPerso). Pour ajouter un métier : un objet de plus ici.
+const METIERS={
+  securite:{
+    label:"Sécurité · vidéosurveillance · alarme",icone:"📹",video:true,
+    systeme:"système de vidéosurveillance",
+    contratSous:"Système de vidéosurveillance / vidéoprotection",
+    contratObjet:"la maintenance préventive et corrective du système de vidéosurveillance/vidéoprotection installé chez le Client (ci-après « le Système »)",
+    composants:"caméras, enregistreurs/NVR, stockage, alimentations, câblage, accès réseau et logiciels associés",
+    unite:["caméra","caméras"],
+    accesMateriel:"l'accès au matériel (enregistreur, caméras)",
+    resumeVisite:"nettoyage, contrôle de l'enregistrement, mises à jour et tests",
+    parcTypes:["Caméra","Enregistreur","Disque dur","Switch / réseau","Alarme","Domotique","Écran","Onduleur","Autre"],
+    icones:{"Caméra":"📷","Enregistreur":"📼","Disque dur":"💽","Switch / réseau":"🔌","Alarme":"🚨","Domotique":"💡","Écran":"🖥️","Onduleur":"🔋"},
+    catProduits:["Caméras","Enregistreurs","Réseau","Câblage","Domotique","Alarme","Main d'œuvre","Autre"],
+    catVersType:{"Caméras":"Caméra","Enregistreurs":"Enregistreur","Réseau":"Switch / réseau","Alarme":"Alarme","Domotique":"Domotique"},
+    check:{
+      maintenance:["Nettoyage des optiques et des dômes","Contrôle de l'image jour et nuit (infrarouge)","Vérification de l'enregistrement et de la durée de conservation","Contrôle de l'état du disque dur","Mise à l'heure et mise à jour des firmwares","Test de l'accès à distance (application)","Test des détections et alertes (IA)","Contrôle des alimentations et de l'onduleur","Vérification des câbles et connectiques","Contrôle des panneaux d'information (RGPD)"],
+      installation:["Pose et fixation des équipements","Raccordement et tests réseau","Paramétrage de l'enregistreur","Réglage des angles de vue et zones de détection","Configuration de l'accès à distance","Création des comptes utilisateurs","Formation du client à l'utilisation","Remise des identifiants et de la documentation","Pose des panneaux d'information (RGPD)"],
+      depannage:["Diagnostic de la panne","Réparation ou remplacement","Tests de bon fonctionnement","Vérification de l'enregistrement"],
+      audit:["Relevé des besoins du client","Repérage des emplacements","Vérification du réseau et des alimentations","Photos du site"]
+    },
+    preventif:["Vérification du bon fonctionnement des caméras et de la qualité d'image (netteté, champ de vision, horodatage) ;","Contrôle de l'enregistreur/NVR, de la capacité et de l'intégrité de stockage ;","Vérification des alimentations, connectiques, fixations et protections contre les intempéries ;","Contrôle des accès réseau, mises à jour de firmware et paramètres de sécurité ;","Nettoyage des équipements accessibles (dômes, caissons) ;","Vérification de la conformité de la signalétique et des durées de conservation des enregistrements."],
+    extension:"Les extensions du Système (ajout de caméras, de canaux d'enregistrement, extension de la couverture réseau) ;",
+    ex:{trans:"Mme Dupont contactée ce jour — souhaite un devis pour 2 caméras extérieures.",produit:"Caméra IP bullet 4MP",pieces:"Ex : 1 caméra dôme 4MP (remplacement)",slogan:"Vidéosurveillance · IA · Domotique",equipement:"le nom de la caméra concernée"},
+    guide:null // guide vidéo intégré (application, relecture, export)
+  },
+  electricite:{
+    label:"Électricité · bornes de recharge · photovoltaïque",icone:"⚡",
+    systeme:"installation électrique",
+    contratSous:"Installation électrique",
+    contratObjet:"la maintenance préventive et corrective de l'installation électrique et des équipements installés chez le Client (ci-après « le Système »)",
+    composants:"tableau électrique, protections, circuits, appareillages, éclairage, bornes de recharge et équipements associés",
+    unite:["équipement","équipements"],
+    accesMateriel:"l'accès au tableau électrique et aux équipements",
+    resumeVisite:"contrôle du tableau, des protections et des équipements, essais et resserrage",
+    parcTypes:["Tableau électrique","Disjoncteur / différentiel","Borne de recharge","Éclairage","Prise / appareillage","Interphone / visiophone","Chauffage électrique","Panneau photovoltaïque","Onduleur photovoltaïque","Autre"],
+    icones:{"Tableau électrique":"🗄️","Disjoncteur / différentiel":"🔌","Borne de recharge":"🔋","Éclairage":"💡","Prise / appareillage":"🔌","Interphone / visiophone":"📞","Chauffage électrique":"♨️","Panneau photovoltaïque":"☀️","Onduleur photovoltaïque":"🔆"},
+    catProduits:["Tableaux & protections","Appareillage","Éclairage","Câbles & conduits","Bornes de recharge","Photovoltaïque","Main d'œuvre","Autre"],
+    catVersType:{"Tableaux & protections":"Tableau électrique","Éclairage":"Éclairage","Bornes de recharge":"Borne de recharge","Appareillage":"Prise / appareillage","Photovoltaïque":"Panneau photovoltaïque"},
+    check:{
+      maintenance:["Contrôle visuel du tableau électrique","Resserrage des connexions","Test des dispositifs différentiels","Contrôle de la mise à la terre","Vérification de l'échauffement des protections","Contrôle des éclairages et appareillages","Test de la borne de recharge","Relevé des anomalies et préconisations"],
+      installation:["Pose du matériel","Raccordement au tableau","Repérage et étiquetage des circuits","Mesures et essais (isolement, terre, différentiels)","Mise sous tension et tests","Explication du fonctionnement au client","Remise du schéma et de la documentation"],
+      depannage:["Diagnostic de la panne","Mise en sécurité","Réparation ou remplacement","Essais de bon fonctionnement"],
+      audit:["Relevé des besoins du client","Contrôle de l'installation existante","Repérage des emplacements","Photos du site"]
+    },
+    preventif:["Contrôle visuel du tableau électrique et des protections ;","Resserrage des connexions accessibles ;","Essai des dispositifs différentiels et contrôle de la mise à la terre ;","Contrôle du bon fonctionnement des éclairages, appareillages et équipements raccordés ;","Contrôle des bornes de recharge et équipements spécifiques le cas échéant ;","Remise d'un compte rendu signalant les anomalies et les travaux recommandés."],
+    extension:"Les extensions de l'installation (ajout de circuits, de points lumineux ou d'équipements) ;",
+    ex:{trans:"M. Martin contacté ce jour — souhaite un devis pour une borne de recharge.",produit:"Disjoncteur différentiel 30 mA type A",pieces:"Ex : 1 disjoncteur 20 A (remplacement)",slogan:"Électricité · Bornes de recharge",equipement:"l'équipement concerné"},
+    guide:[
+      ["🗄️ Votre tableau électrique","<p>Chaque disjoncteur est repéré par une étiquette indiquant le circuit qu'il protège. En cas de coupure, repérez le disjoncteur abaissé et remontez-le. S'il saute à nouveau, débranchez les appareils de ce circuit et contactez-nous.</p>"],
+      ["🔘 Tester vos différentiels","<p>Appuyez régulièrement (par exemple une fois par mois) sur le bouton « Test » de chaque interrupteur différentiel : il doit couper le courant. Remontez-le ensuite. S'il ne coupe pas, contactez-nous.</p>"],
+      ["✅ Bonnes pratiques","<ul><li>Ne surchargez pas les prises multiples.</li><li>N'intervenez jamais sur l'installation sous tension.</li><li>Signalez-nous toute odeur de brûlé, tout échauffement ou crépitement.</li><li>Conservez ce dossier : il vous sera demandé en cas de vente ou de sinistre.</li></ul>"]
+    ]
+  },
+  plomberie:{
+    label:"Plomberie · chauffage · climatisation",icone:"🚿",
+    systeme:"installation de plomberie, chauffage et climatisation",
+    contratSous:"Plomberie · Chauffage · Climatisation",
+    contratObjet:"l'entretien et la maintenance préventive et corrective des équipements de plomberie, de chauffage, de production d'eau chaude et de climatisation installés chez le Client (ci-après « le Système »)",
+    composants:"chauffe-eau, chaudières, pompes à chaleur, climatiseurs, réseaux, robinetterie et équipements associés",
+    unite:["équipement","équipements"],
+    accesMateriel:"l'accès aux équipements (chauffe-eau, climatiseurs, chaudière)",
+    resumeVisite:"nettoyage, contrôle des organes de sécurité, de l'étanchéité et des performances",
+    parcTypes:["Chauffe-eau","Chauffe-eau solaire","Chaudière","Pompe à chaleur","Climatiseur","Ballon thermodynamique","Adoucisseur / filtration","Robinetterie / sanitaire","Pompe / surpresseur","Autre"],
+    icones:{"Chauffe-eau":"♨️","Chauffe-eau solaire":"☀️","Chaudière":"🔥","Pompe à chaleur":"🌡️","Climatiseur":"❄️","Ballon thermodynamique":"🛢️","Adoucisseur / filtration":"💧","Robinetterie / sanitaire":"🚰","Pompe / surpresseur":"⚙️"},
+    catProduits:["Chauffe-eau","Climatisation","Chauffage","Sanitaire & robinetterie","Tuyauterie & raccords","Pièces détachées","Main d'œuvre","Autre"],
+    catVersType:{"Chauffe-eau":"Chauffe-eau","Climatisation":"Climatiseur","Chauffage":"Chaudière","Sanitaire & robinetterie":"Robinetterie / sanitaire"},
+    check:{
+      maintenance:["Contrôle de l'étanchéité des raccords","Nettoyage des filtres (climatisation)","Contrôle de la pression et des organes de sécurité","Vérification du groupe de sécurité du chauffe-eau","Détartrage si nécessaire","Contrôle des évacuations et des condensats","Mesure des températures de fonctionnement","Relevé des anomalies et préconisations"],
+      installation:["Pose et fixation des équipements","Raccordements hydrauliques","Raccordements électriques","Mise en eau et purge","Test d'étanchéité","Mise en service et réglages","Explication du fonctionnement au client","Remise des notices et garanties"],
+      depannage:["Diagnostic de la panne","Mise en sécurité (coupure eau / électricité)","Réparation ou remplacement","Tests de bon fonctionnement et d'étanchéité"],
+      audit:["Relevé des besoins du client","Contrôle de l'installation existante","Repérage des emplacements","Photos du site"]
+    },
+    preventif:["Nettoyage et contrôle des équipements (filtres, échangeurs, unités intérieures et extérieures) ;","Contrôle des organes de sécurité, de la pression et de l'étanchéité ;","Vérification des évacuations et de l'écoulement des condensats ;","Contrôle des performances de fonctionnement (températures, débit) ;","Détartrage des équipements lorsque nécessaire ;","Remise d'un compte rendu signalant les anomalies et les travaux recommandés."],
+    extension:"Les extensions de l'installation (ajout d'équipements, de points d'eau ou de réseaux) ;",
+    ex:{trans:"Mme Dupont contactée ce jour — souhaite un devis pour un climatiseur dans la chambre.",produit:"Climatiseur mural 9000 BTU",pieces:"Ex : 1 groupe de sécurité (remplacement)",slogan:"Plomberie · Climatisation",equipement:"l'équipement concerné"},
+    guide:[
+      ["💧 En cas de fuite","<p>Fermez immédiatement le robinet d'arrêt général (repérez-le dès aujourd'hui), coupez l'alimentation électrique des appareils concernés, puis contactez-nous.</p>"],
+      ["♨️ Votre chauffe-eau","<p>Manœuvrez régulièrement le groupe de sécurité (par exemple une fois par mois) pour éviter son entartrage. Un léger écoulement pendant la chauffe est normal ; un écoulement permanent ne l'est pas.</p>"],
+      ["❄️ Votre climatisation","<p>Nettoyez régulièrement les filtres de l'unité intérieure, laissez dégagée l'unité extérieure et faites entretenir l'appareil au moins une fois par an.</p>"],
+      ["✅ Bonnes pratiques","<ul><li>Ne bouchez pas les évacuations et les grilles d'aération.</li><li>Signalez-nous tout bruit anormal, odeur ou baisse de performance.</li><li>Conservez les notices et ce dossier : ils sont demandés en cas de garantie.</li></ul>"]
+    ]
+  },
+  batiment:{
+    label:"Bâtiment · maçonnerie · menuiserie · peinture",icone:"🧱",
+    systeme:"ouvrage",
+    contratSous:"Entretien des ouvrages",
+    contratObjet:"l'entretien et la maintenance préventive et corrective des ouvrages et éléments réalisés ou posés par le Prestataire chez le Client (ci-après « le Système »)",
+    composants:"menuiseries, fermetures, revêtements, toitures, étanchéités et autres ouvrages réalisés",
+    unite:["élément","éléments"],
+    accesMateriel:"l'accès aux ouvrages concernés",
+    resumeVisite:"contrôle visuel, réglages, graissage et repérage des désordres",
+    parcTypes:["Menuiserie (porte, fenêtre)","Volet / store","Portail / clôture","Toiture / étanchéité","Charpente","Revêtement de sol","Peinture / enduit","Cloison / plafond","Maçonnerie","Autre"],
+    icones:{"Menuiserie (porte, fenêtre)":"🚪","Volet / store":"🪟","Portail / clôture":"🚧","Toiture / étanchéité":"🏠","Charpente":"🪵","Revêtement de sol":"🟫","Peinture / enduit":"🎨","Cloison / plafond":"📐","Maçonnerie":"🧱"},
+    catProduits:["Gros œuvre","Menuiserie","Couverture & étanchéité","Revêtements","Peinture","Fournitures","Main d'œuvre","Autre"],
+    catVersType:{"Menuiserie":"Menuiserie (porte, fenêtre)","Couverture & étanchéité":"Toiture / étanchéité","Revêtements":"Revêtement de sol","Peinture":"Peinture / enduit","Gros œuvre":"Maçonnerie"},
+    check:{
+      maintenance:["Contrôle visuel des ouvrages","Vérification des menuiseries et quincailleries","Contrôle des joints et de l'étanchéité","Repérage des fissures et infiltrations","Nettoyage et graissage des mécanismes","Relevé des désordres et préconisations"],
+      installation:["Protection du chantier et des existants","Réalisation des ouvrages selon le devis","Nettoyage et évacuation des déchets","Contrôle des finitions","Visite de réception avec le client","Levée des réserves éventuelles","Remise des notices d'entretien"],
+      depannage:["Constat du désordre","Mise en sécurité","Réparation","Contrôle après réparation"],
+      audit:["Relevé des besoins du client","Prise de mesures","Contrôle de l'existant","Photos du site"]
+    },
+    preventif:["Contrôle visuel des ouvrages réalisés ;","Vérification et réglage des menuiseries, fermetures et quincailleries ;","Contrôle des joints, de l'étanchéité et des évacuations ;","Repérage des fissures, infiltrations et autres désordres ;","Nettoyage et graissage des mécanismes accessibles ;","Remise d'un compte rendu signalant les anomalies et les travaux recommandés."],
+    extension:"Les travaux neufs ou de modification des ouvrages existants ;",
+    ex:{trans:"M. Martin contacté ce jour — souhaite un devis pour remplacer 3 fenêtres.",produit:"Fenêtre aluminium 2 vantaux 120 x 135",pieces:"Ex : 1 poignée de fenêtre (remplacement)",slogan:"Construction · Rénovation",equipement:"l'ouvrage concerné"},
+    guide:[
+      ["🧽 Entretenir vos ouvrages","<p>Suivez les notices d'entretien remises avec ce dossier. Nettoyez les menuiseries avec des produits doux, sans abrasif, et dégagez régulièrement les rails et les trous d'évacuation.</p>"],
+      ["🛡️ Vos garanties légales","<ul><li><strong>Garantie de parfait achèvement</strong> : 1 an après la réception, pour les désordres signalés.</li><li><strong>Garantie biennale</strong> (bon fonctionnement) : 2 ans pour les éléments d'équipement dissociables.</li><li><strong>Garantie décennale</strong> : 10 ans pour les dommages qui compromettent la solidité de l'ouvrage ou le rendent impropre à sa destination.</li></ul><p>Signalez tout désordre par écrit, avec des photos, dès que vous le constatez.</p>"],
+      ["✅ Bonnes pratiques","<ul><li>Ne percez pas les zones d'étanchéité sans avis.</li><li>Surveillez l'apparition de fissures ou de traces d'humidité.</li><li>Conservez ce dossier et le procès-verbal de réception.</li></ul>"]
+    ]
+  },
+  services:{
+    label:"Services · nettoyage · espaces verts · piscine",icone:"🌿",
+    systeme:"site",
+    contratSous:"Contrat d'entretien",
+    contratObjet:"l'entretien régulier du site du Client (espaces verts, piscine, locaux ou équipements désignés en Annexe 1) (ci-après « le Système »)",
+    composants:"espaces, surfaces, piscine, équipements et matériels confiés",
+    unite:["passage mensuel","passages mensuels"],
+    accesMateriel:"l'accès au site et aux équipements",
+    resumeVisite:"réalisation des prestations prévues et contrôle des équipements",
+    parcTypes:["Piscine","Pompe / filtration","Robot de piscine","Espace vert","Arrosage automatique","Local / surface","Matériel confié","Autre"],
+    icones:{"Piscine":"🏊","Pompe / filtration":"⚙️","Robot de piscine":"🤖","Espace vert":"🌳","Arrosage automatique":"💦","Local / surface":"🏢","Matériel confié":"🧰"},
+    catProduits:["Entretien courant","Espaces verts","Piscine","Nettoyage","Produits & fournitures","Main d'œuvre","Autre"],
+    catVersType:{"Piscine":"Piscine","Espaces verts":"Espace vert"},
+    check:{
+      maintenance:["Contrôle de l'état général du site","Réalisation des prestations prévues","Contrôle des équipements (pompe, filtration, arrosage)","Mesures et réglages (ex. pH et chlore d'une piscine)","Évacuation des déchets","Photos avant / après","Relevé des anomalies et préconisations"],
+      installation:["Visite initiale du site","Définition des prestations et de la fréquence","Remise des accès (clés, codes)","Première prestation","Validation avec le client"],
+      depannage:["Constat du problème","Intervention","Contrôle après intervention"],
+      audit:["Relevé des besoins du client","Mesure des surfaces","Repérage des accès","Photos du site"]
+    },
+    preventif:["Réalisation des prestations d'entretien selon la fréquence définie en Annexe 2 ;","Contrôle du bon fonctionnement des équipements confiés ;","Mesures et réglages nécessaires (traitement de l'eau, arrosage…) ;","Évacuation des déchets issus des prestations ;","Information du Client de toute anomalie constatée."],
+    extension:"Les prestations ponctuelles ou supplémentaires non prévues en Annexe 2 ;",
+    ex:{trans:"Mme Dupont contactée ce jour — souhaite un entretien de piscine hebdomadaire.",produit:"Entretien piscine — passage hebdomadaire",pieces:"Ex : 1 cartouche de filtre (remplacement)",slogan:"Entretien · Espaces verts · Piscine",equipement:"l'équipement concerné"},
+    guide:[
+      ["📅 Vos passages","<p>Les dates de passage sont fixées avec vous et rappelées par e-mail. Prévenez-nous si l'accès au site est impossible à une date prévue.</p>"],
+      ["✅ Bonnes pratiques","<ul><li>Signalez-nous tout changement sur le site (travaux, nouvel équipement, accès modifié).</li><li>Ne modifiez pas les réglages des équipements (filtration, arrosage) sans nous en parler.</li><li>Conservez ce dossier : il récapitule le matériel suivi et nos coordonnées.</li></ul>"]
+    ]
+  },
+  generique:{
+    label:"Autre métier",icone:"🧰",
+    systeme:"installation",
+    contratSous:"Contrat de maintenance",
+    contratObjet:"la maintenance préventive et corrective des équipements installés chez le Client (ci-après « le Système »)",
+    composants:"équipements, accessoires et éléments installés",
+    unite:["équipement","équipements"],
+    accesMateriel:"l'accès aux équipements",
+    resumeVisite:"contrôle, nettoyage et tests des équipements",
+    parcTypes:["Équipement","Accessoire","Pièce détachée","Autre"],
+    icones:{"Équipement":"⚙️","Accessoire":"🔩","Pièce détachée":"🧩"},
+    catProduits:["Matériel","Fournitures","Main d'œuvre","Autre"],
+    catVersType:{"Matériel":"Équipement"},
+    check:{
+      maintenance:["Contrôle de l'état général","Nettoyage","Tests de bon fonctionnement","Relevé des anomalies et préconisations"],
+      installation:["Pose et fixation","Raccordements","Mise en service et tests","Explication du fonctionnement au client","Remise de la documentation"],
+      depannage:["Diagnostic de la panne","Réparation ou remplacement","Tests de bon fonctionnement"],
+      audit:["Relevé des besoins du client","Contrôle de l'existant","Photos du site"]
+    },
+    preventif:["Contrôle de l'état général et du bon fonctionnement des équipements ;","Nettoyage des équipements accessibles ;","Tests et réglages nécessaires ;","Remise d'un compte rendu signalant les anomalies et les travaux recommandés."],
+    extension:"Les extensions de l'installation (ajout d'équipements) ;",
+    ex:{trans:"M. Martin contacté ce jour — souhaite un devis.",produit:"Désignation du produit",pieces:"Ex : 1 pièce (remplacement)",slogan:"Votre accroche",equipement:"l'équipement concerné"},
+    guide:[
+      ["✅ Bonnes pratiques","<ul><li>Suivez les notices d'utilisation et d'entretien remises avec ce dossier.</li><li>Signalez-nous tout dysfonctionnement dès que vous le constatez.</li><li>Conservez ce dossier : les numéros de série sont demandés en cas de garantie.</li></ul>"]
+    ]
+  }
+};
+const METIER_ORDRE=["securite","electricite","plomberie","batiment","services","generique"];
+
+// Profil actif = profil du métier + personnalisations de l'abonné
+function metierId(){ return METIERS[TH&&TH.metier]?TH.metier:"generique"; }
+function MP(){
+  const base=METIERS[metierId()];
+  const perso=(TH&&TH.metierPerso)||{};
+  const p=Object.assign({},base);
+  if(Array.isArray(perso.parcTypes)&&perso.parcTypes.length) p.parcTypes=perso.parcTypes;
+  p.check=Object.assign({},base.check);
+  if(Array.isArray(perso.checkMaintenance)&&perso.checkMaintenance.length) p.check.maintenance=perso.checkMaintenance;
+  if(Array.isArray(perso.checkInstallation)&&perso.checkInstallation.length) p.check.installation=perso.checkInstallation;
+  if(Array.isArray(perso.unite)&&perso.unite[0]) p.unite=[perso.unite[0],perso.unite[1]||perso.unite[0]+"s"];
+  return p;
+}
+function uniteTxt(n){ const u=MP().unite; return n>1?u[1]:u[0]; }
+
+// Recalcule les listes de l'appli (types de matériel, listes de contrôle) d'après le métier
+function appliquerMetier(){
+  try{
+    const p=MP();
+    PARC_TYPES=p.parcTypes.includes("Autre")?p.parcTypes.slice():p.parcTypes.concat(["Autre"]);
+    PARC_ICON=Object.assign({"Autre":"🔧"},p.icones);
+    PARC_CAT_TYPE=Object.assign({},p.catVersType);
+    Object.keys(RI_CHECK).forEach(k=>delete RI_CHECK[k]);
+    Object.assign(RI_CHECK,JSON.parse(JSON.stringify(p.check)));
+    // Lu par le serveur pour les e-mails de relance (reconduction, rappel de visite)
+    TH.systemeLibelle=p.systeme;
+    TH.accesMateriel=p.accesMateriel;
+  }catch(e){ console.warn("appliquerMetier:",e); }
+}
+
+// Catalogue d'exemple (vidéosurveillance) encore intact ?
+function catalogueDemo(){ return CATALOGUE.length>0&&CATALOGUE.every(x=>/^cat\d+$/.test(x.id||"")); }
+
+function choisirMetier(id,depuisAccueil){
+  if(!METIERS[id]) return;
+  const change=TH.metier!==id;
+  TH.metier=id;
+  if(change) TH.metierPerso={};
+  if(catalogueDemo()&&id!=="securite"){ CATALOGUE=[]; }
+  if(change&&(depuisAccueil||catalogueDemo()||!CATALOGUE.length)) CAT_PRODUITS=METIERS[id].catProduits.slice();
+  appliquerMetier();
+  logActivity("Métier",METIERS[id].label);
+  saveData();
+  closeModal();
+  if(activePanel==="metier") renderPanel();
+  renderPage();
+}
+window.choisirMetier=choisirMetier;
+
+// Premier lancement d'un nouvel abonné : choix du métier (administrateurs)
+function verifierMetier(){
+  if(!currentUser||TH.metier||!hasRole("admin")) return;
+  const cartes=METIER_ORDRE.map(id=>{const m=METIERS[id];return `<button onclick="choisirMetier('${id}',true)" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:13px 14px;margin-bottom:8px;border-radius:12px;border:1.5px solid #e2e8f0;background:#fff;cursor:pointer;font-size:14px;font-weight:600;color:#0f172a;font-family:inherit"><span style="font-size:24px">${m.icone}</span><span>${pE(m.label)}</span></button>`;}).join("");
+  showModal("Bienvenue ! Quel est votre métier ?",`
+    <p style="font-size:13px;color:#475569;margin:0 0 14px">AD Management adapte le vocabulaire, les types de matériel, les listes de contrôle, le contrat de maintenance et le dossier de remise à votre activité. Vous pourrez changer ce choix et ajuster les listes dans Réglages › Métier.</p>
+    ${cartes}`,
+    `<button class="btn-cancel" onclick="choisirMetier('generique',true)">Passer</button>`);
+}
+
+// Réglages › Métier : choix du profil + listes personnalisables (une ligne par élément)
+function renderMetierPanel(){
+  const p=MP(), id=metierId();
+  const zone=(cle,titre,liste,aide)=>`<div class="p-field"><label class="field-label">${titre}</label><textarea id="mp-${cle}" style="min-height:130px;width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:9px;border-radius:9px;border:1.5px solid #e2e8f0">${pE(liste.join("\n"))}</textarea><div style="font-size:11px;color:#94a3b8;margin-top:4px">${aide}</div></div>`;
+  return panelShell("🧰","Métier",`
+    ${reglageTitre("Votre métier","Adapte le vocabulaire, le matériel, les listes de contrôle, les contrats et le dossier de remise")}
+    <div class="p-field"><select id="mp-metier" onchange="if(confirm('Changer de métier ? Les listes ci-dessous reviendront aux valeurs du nouveau métier. Vos clients, devis et factures ne changent pas.'))choisirMetier(this.value);else this.value='${id}'">
+      ${METIER_ORDRE.map(k=>`<option value="${k}" ${k===id?"selected":""}>${METIERS[k].icone} ${pE(METIERS[k].label)}</option>`).join("")}</select></div>
+    ${reglageTitre("Personnaliser","Une ligne par élément. Laissez vide pour revenir aux valeurs du métier.")}
+    ${zone("parc","Types de matériel suivis",p.parcTypes,"Utilisés dans le parc installé de chaque client")}
+    ${zone("maint","Liste de contrôle — visite d'entretien",p.check.maintenance,"Proposée dans chaque rapport de maintenance")}
+    ${zone("inst","Liste de contrôle — installation",p.check.installation,"Proposée dans chaque rapport d'installation")}
+    <div class="field-row"><div class="p-field"><label class="field-label">Unité des forfaits (singulier)</label><input id="mp-u1" value="${pE(p.unite[0])}"/></div>
+    <div class="p-field"><label class="field-label">Unité (pluriel)</label><input id="mp-u2" value="${pE(p.unite[1])}"/></div></div>`,
+    `<button class="btn-reset" onclick="closePanel();openPanel('settings')">← Réglages</button><button class="btn-apply" onclick="enregistrerMetierPerso()">Enregistrer ✓</button>`);
+}
+function enregistrerMetierPerso(){
+  const lignes=id=>(document.getElementById(id).value||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  const base=METIERS[metierId()];
+  const diff=(a,b)=>JSON.stringify(a)!==JSON.stringify(b);
+  const parc=lignes("mp-parc"),maint=lignes("mp-maint"),inst=lignes("mp-inst");
+  const u=[document.getElementById("mp-u1").value.trim(),document.getElementById("mp-u2").value.trim()];
+  TH.metierPerso={
+    parcTypes:parc.length&&diff(parc,base.parcTypes)?parc:undefined,
+    checkMaintenance:maint.length&&diff(maint,base.check.maintenance)?maint:undefined,
+    checkInstallation:inst.length&&diff(inst,base.check.installation)?inst:undefined,
+    unite:u[0]&&diff(u,base.unite)?u:undefined
+  };
+  appliquerMetier();
+  logActivity("Métier","Listes personnalisées enregistrées");
+  saveData();
+  closePanel();
+  alert("✓ Réglages du métier enregistrés.");
+}
+window.enregistrerMetierPerso=enregistrerMetierPerso;
+
+// ══════════════════════════════════════════════════════════
 // ── PARC INSTALLÉ (équipements posés chez chaque client) ──
 // ══════════════════════════════════════════════════════════
 // Stocké dans la fiche client : c.parc = [{id,type,marque,modele,ref,serie,mac,ip,emplacement,dateInstall,garantieMois,statut,notes,source}]
-const PARC_TYPES=["Caméra","Enregistreur","Disque dur","Switch / réseau","Alarme","Domotique","Écran","Onduleur","Autre"];
-const PARC_ICON={"Caméra":"📷","Enregistreur":"📼","Disque dur":"💽","Switch / réseau":"🔌","Alarme":"🚨","Domotique":"💡","Écran":"🖥️","Onduleur":"🔋","Autre":"🔧"};
+let PARC_TYPES=["Caméra","Enregistreur","Disque dur","Switch / réseau","Alarme","Domotique","Écran","Onduleur","Autre"];
+let PARC_ICON={"Caméra":"📷","Enregistreur":"📼","Disque dur":"💽","Switch / réseau":"🔌","Alarme":"🚨","Domotique":"💡","Écran":"🖥️","Onduleur":"🔋","Autre":"🔧"};
 const PARC_ST={actif:["#dcfce7","#15803d","En service"],surveiller:["#fef9c3","#a16207","À surveiller"],hs:["#fee2e2","#991b1b","Hors service"],remplace:["#f1f5f9","#64748b","Remplacé"],retire:["#f1f5f9","#94a3b8","Retiré"]};
-const PARC_CAT_TYPE={"Caméras":"Caméra","Enregistreurs":"Enregistreur","Réseau":"Switch / réseau","Alarme":"Alarme","Domotique":"Domotique"};
+let PARC_CAT_TYPE={"Caméras":"Caméra","Enregistreurs":"Enregistreur","Réseau":"Switch / réseau","Alarme":"Alarme","Domotique":"Domotique"};
 function pE(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function parcGarantieFin(x){
   if(!x.dateInstall) return "";
@@ -7295,7 +7566,7 @@ function renderParcSection(c){
 
 function modalParc(clientId,id){
   const c=CLIENTS.find(x=>x.id===clientId);if(!c)return;
-  const x=id?(c.parc||[]).find(p=>p.id===id):{type:"Caméra",marque:"",modele:"",ref:"",serie:"",mac:"",ip:"",emplacement:"",dateInstall:getToday(),garantieMois:TH.garantieMois||24,statut:"actif",notes:""};
+  const x=id?(c.parc||[]).find(p=>p.id===id):{type:PARC_TYPES[0],marque:"",modele:"",ref:"",serie:"",mac:"",ip:"",emplacement:"",dateInstall:getToday(),garantieMois:TH.garantieMois||24,statut:"actif",notes:""};
   if(!x)return;
   const prods=CATALOGUE.filter(p=>PARC_CAT_TYPE[p.cat]);
   showModal(id?"Modifier l'équipement":"Nouvel équipement",`
@@ -7555,7 +7826,7 @@ function ouvrirFormRI(){
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:6px 0 6px">État des équipements</div>
     <div id="ri-eq">${riEqHTML()}</div>
     <div class="field" style="margin-top:12px"><label>Travaux réalisés</label><textarea id="ri-trav" style="min-height:90px" placeholder="Décrivez l'intervention…">${pE(r.travaux)}</textarea></div>
-    <div class="field"><label>Pièces fournies / remplacées</label><textarea id="ri-pieces" style="min-height:50px" placeholder="Ex : 1 caméra dôme 4MP (remplacement entrée)">${pE(r.pieces)}</textarea></div>
+    <div class="field"><label>Pièces fournies / remplacées</label><textarea id="ri-pieces" style="min-height:50px" placeholder="${pE(MP().ex.pieces)}">${pE(r.pieces)}</textarea></div>
     <div class="field"><label>Observations et recommandations</label><textarea id="ri-obs" style="min-height:60px">${pE(r.observations)}</textarea></div>
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:6px 0 6px">Photos</div>
     <div id="ri-photos">${riPhotosHTML()}</div>
@@ -7821,23 +8092,22 @@ function modalDossierRemise(clientId){
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Contenu du dossier</div>
     ${ck("dr-garde","Page de garde",o.sections.garde)}
     ${ck("dr-parc","Fiche du parc installé",o.sections.parc,`${parcActifs(c).length} équipement(s)`+(parcActifs(c).length?"":" — complétez le parc d'abord"))}
-    ${ck("dr-guide","Guide d'utilisation",o.sections.guide,"Direct, relecture, export d'une vidéo, alertes, bonnes pratiques")}
-    ${ck("dr-rgpd","Obligations légales et RGPD",o.sections.rgpd,"Adapté à la situation du client (cases ci-dessous)")}
+    ${ck("dr-guide",MP().video?"Guide d'utilisation":"Conseils d'utilisation et d'entretien",o.sections.guide,MP().video?"Direct, relecture, export d'une vidéo, alertes, bonnes pratiques":"Adaptés à votre métier")}
+    ${MP().video?ck("dr-rgpd","Obligations légales et RGPD",o.sections.rgpd,"Adapté à la situation du client (cases ci-dessous)"):""}
     ${ck("dr-pv","Procès-verbal de mise en service",o.sections.pv,ris.length?"":"Aucun rapport d'intervention pour ce client")}
     ${ck("dr-sav","Garanties, maintenance et contacts SAV",o.sections.sav)}
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:16px 0 6px">Paramètres</div>
-    <div class="field-row">
+    ${MP().video?`    <div class="field-row">
       <div class="field"><label>Application mobile</label><select id="dr-app" onchange="document.getElementById('dr-app-autre-w').style.display=this.value==='Autre'?'block':'none'">${REMISE_APPS.map(a=>`<option ${a===o.app?"selected":""}>${a}</option>`).join("")}</select>
         <div id="dr-app-autre-w" style="display:${o.app==="Autre"?"block":"none"};margin-top:6px"><input id="dr-app-autre" value="${pE(o.appAutre)}" placeholder="Nom de l'application"/></div></div>
       <div class="field"><label>Conservation des images (jours)</label><input type="number" id="dr-cons" min="1" max="90" value="${o.conservation}"/></div>
     </div>
+`:""}
     ${ris.length?`<div class="field"><label>Rapport servant de PV</label><select id="dr-ri">${ris.map(r=>`<option value="${r.id}" ${r.id===o.riId?"selected":""}>${pE(r.num)} · ${pE(RI_TYPES[r.type]||"")} · ${fDate(r.date)}${r.statut==="signe"?" ✍️":" (brouillon)"}</option>`).join("")}</select></div>`:""}
-    ${ck("dr-pro","Client professionnel (entreprise, commerce, association)",o.pro)}
-    ${ck("dr-sal","Le client emploie des salariés",o.salaries)}
-    ${ck("dr-pub","Des caméras filment un lieu ouvert au public",o.public,"Commerce, accueil, parking client… : autorisation préfectorale")}
+    ${MP().video?ck("dr-pro","Client professionnel (entreprise, commerce, association)",o.pro)+ck("dr-sal","Le client emploie des salariés",o.salaries)+ck("dr-pub","Des caméras filment un lieu ouvert au public",o.public,"Commerce, accueil, parking client… : autorisation préfectorale"):""}
     <div class="field" style="margin-top:12px"><label>Horaires du SAV</label><input id="dr-hor" value="${pE(o.horaires)}" placeholder="Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30"/></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Fermer</button>
-     <button class="btn-cancel" onclick="imprimerFicheIdentifiants('${c.id}')">🔐 Fiche identifiants</button>
+     ${MP().video?`<button class="btn-cancel" onclick="imprimerFicheIdentifiants('${c.id}')">🔐 Fiche identifiants</button>`:""}
      <button class="btn-save" style="background:${TH.c1}" onclick="genererDossierRemise('${c.id}')">📘 Générer le dossier</button>`);
 }
 function lireRemise(c){
@@ -7880,17 +8150,18 @@ function dossierRemiseHTML(c,o,ri){
       ${c.adresse?`<div style="font-size:14px;color:#64748b;margin-top:6px">${pE(c.adresse)}</div>`:""}
       <div style="font-size:14px;color:#64748b;margin-top:30px">Remis le ${pE(dLong)}</div></div>
     <div class="sommaire"><div style="font-weight:800;margin-bottom:8px">Contenu</div>
-      ${[["parc","Votre matériel"],["guide","Guide d'utilisation"],["rgpd","Vos obligations légales"],["pv","Procès-verbal de mise en service"],["sav","Garanties, maintenance et assistance"]].filter(([k])=>o.sections[k]&&(k!=="pv"||ri)).map(([,l],i)=>`<div>${i+1}. ${l}</div>`).join("")}</div>
+      ${[["parc","Votre matériel"],["guide",MP().video?"Guide d'utilisation":"Conseils d'utilisation et d'entretien"],["rgpd","Vos obligations légales"],["pv","Procès-verbal de mise en service"],["sav","Garanties, maintenance et assistance"]].filter(([k])=>o.sections[k]&&(k!=="pv"||ri)&&(k!=="rgpd"||MP().video)&&(k!=="guide"||MP().video||(MP().guide||[]).length)).map(([,l],i)=>`<div>${i+1}. ${l}</div>`).join("")}</div>
     <div style="position:absolute;bottom:40px;left:0;right:0;text-align:center;font-size:11px;color:#94a3b8">${pE([TH.adresse||TH.contratSiege,TH.tel,TH.email,TH.site].filter(Boolean).join(" · "))}</div>
   </section>`);
   // 2. Parc
   if(o.sections.parc) sections.push(page("Votre matériel",`
-    <p>Votre système comprend ${[["Caméra","caméra"],["Enregistreur","enregistreur"],["Switch / réseau","équipement réseau"],["Disque dur","disque dur"],["Alarme","élément d'alarme"],["Domotique","module domotique"],["Écran","écran"],["Onduleur","onduleur"]].filter(([t])=>nb(t)).map(([t,l])=>`<strong>${nb(t)} ${l}${nb(t)>1&&!/s$/.test(l)?"s":""}</strong>`).join(", ")||"les équipements listés ci-dessous"}.</p>
+    <p>${MP().video?"Votre système":"Votre installation"} comprend ${(MP().video?[["Caméra","caméra"],["Enregistreur","enregistreur"],["Switch / réseau","équipement réseau"],["Disque dur","disque dur"],["Alarme","élément d'alarme"],["Domotique","module domotique"],["Écran","écran"],["Onduleur","onduleur"]].filter(([t])=>nb(t)).map(([t,l])=>`<strong>${nb(t)} ${l}${nb(t)>1&&!/s$/.test(l)?"s":""}</strong>`):PARC_TYPES.filter(t=>nb(t)).map(t=>`<strong>${nb(t)} × ${pE(t.toLowerCase())}</strong>`)).join(", ")||"les équipements listés ci-dessous"}.</p>
     ${parc.length?`<table><thead><tr><th>Équipement</th><th>N° de série</th><th>Emplacement</th><th>Installé le</th><th>Garantie jusqu'au</th></tr></thead><tbody>
       ${parc.map(x=>{const g=parcGarantieFin(x);return `<tr><td>${PARC_ICON[x.type]||""} ${pE(x.type)} — ${pE([x.marque,x.modele].filter(Boolean).join(" "))}</td><td>${pE(x.serie)||"—"}</td><td>${pE(x.emplacement)||"—"}</td><td>${x.dateInstall?pE(RelancesCore.dateLongue(x.dateInstall)):"—"}</td><td>${g?pE(RelancesCore.dateLongue(g)):"—"}</td></tr>`;}).join("")}</tbody></table>`:`<p class="note">La liste détaillée du matériel vous sera transmise séparément.</p>`}
     <p class="note">Conservez ce document : les numéros de série sont demandés en cas de garantie ou de déclaration à votre assurance.</p>`,++n));
   // 3. Guide
-  if(o.sections.guide) sections.push(page("Guide d'utilisation",`
+  if(o.sections.guide&&!MP().video&&(MP().guide||[]).length) sections.push(page("Conseils d'utilisation et d'entretien",MP().guide.map(([t,h])=>`<div class="bloc"><h2>${t}</h2>${h}</div>`).join(""),++n));
+  if(o.sections.guide&&MP().video) sections.push(page("Guide d'utilisation",`
     <div class="bloc"><h2>📱 Installer l'application</h2><ol>
       <li>Téléchargez <strong>${pE(app)}</strong> depuis l'App Store (iPhone, iPad) ou Google Play (Android).</li>
       <li>Connectez-vous avec l'identifiant remis lors de l'installation (fiche identifiants séparée).</li>
@@ -7914,7 +8185,7 @@ function dossierRemiseHTML(c,o,ri){
       <li>Signalez-nous toute caméra noire, floue ou déplacée.</li>
       <li>Après une coupure de courant, vérifiez dans l'application que les caméras sont revenues en ligne.</li></ul></div>`,++n));
   // 4. RGPD
-  if(o.sections.rgpd){
+  if(o.sections.rgpd&&MP().video){
     const pts=[];
     pts.push(`<div class="bloc"><h2>Ce que vous pouvez filmer</h2><ul>
       <li>Uniquement l'<strong>intérieur de votre propriété</strong> : terrain, bâtiment, parking privé.</li>
@@ -7955,12 +8226,12 @@ function dossierRemiseHTML(c,o,ri){
     const contrat=(c.contratsSignes||[]).find(x=>!x.resilie);
     sections.push(page("Garanties, maintenance et assistance",`
       <div class="bloc"><h2>Garantie du matériel</h2><p>Le matériel est garanti ${garMin?`jusqu'au <strong>${pE(RelancesCore.dateLongue(garMin))}</strong> au minimum (détail par équipement dans la fiche du matériel)`:"selon les durées indiquées par équipement"}. La garantie couvre les défauts de fabrication ; elle ne couvre pas les dommages dus à la foudre, aux surtensions, aux chocs, à l'humidité ou à une intervention extérieure.</p></div>
-      <div class="bloc"><h2>Maintenance</h2><p>${contrat?`Votre contrat de maintenance${contrat.forfaitLabel?" (forfait "+pE(contrat.forfaitLabel)+")":""} prévoit une visite préventive tous les six mois : nettoyage, contrôle de l'enregistrement, mises à jour et tests. Vous êtes prévenu par e-mail avant chaque visite.`:`Une visite préventive tous les six mois (nettoyage des optiques, contrôle de l'enregistrement, mises à jour) prolonge la durée de vie de votre installation. Demandez-nous notre contrat de maintenance.`}</p></div>
+      <div class="bloc"><h2>Maintenance</h2><p>${contrat?`Votre contrat de maintenance${contrat.forfaitLabel?" (forfait "+pE(contrat.forfaitLabel)+")":""} prévoit une visite préventive tous les six mois : ${pE(MP().resumeVisite)}. Vous êtes prévenu par e-mail avant chaque visite.`:`Une visite préventive tous les six mois (nettoyage des optiques, contrôle de l'enregistrement, mises à jour) prolonge la durée de vie de votre installation. Demandez-nous notre contrat de maintenance.`}</p></div>
       <div class="bloc contact"><h2>Nous contacter</h2>
         <div style="font-size:16px;font-weight:800;margin-bottom:6px">${pE(ent)}</div>
         ${TH.tel?`<div>📞 ${pE(TH.tel)}</div>`:""}${TH.email?`<div>✉️ ${pE(TH.email)}</div>`:""}${TH.site?`<div>🌐 ${pE(String(TH.site).replace(/^https?:\/\//,""))}</div>`:""}
         ${o.horaires?`<div style="margin-top:6px">🕘 ${pE(o.horaires)}</div>`:""}
-        <p style="margin-top:10px;font-size:12px;color:#475569">Pour un dépannage plus rapide, indiquez le nom de la caméra concernée et, si possible, le numéro de série figurant dans la fiche du matériel.</p></div>`,++n));
+        <p style="margin-top:10px;font-size:12px;color:#475569">Pour un dépannage plus rapide, indiquez ${pE(MP().ex.equipement)} et, si possible, le numéro de série figurant dans la fiche du matériel.</p></div>`,++n));
   }
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><base href="${location.href}"/><title>Dossier de remise — ${pE(c.nom)}</title><style>
     @page{size:A4;margin:0}
@@ -8502,7 +8773,7 @@ function genererCourrierReconduction(clientId,docId){
     <div class="date">Le ${fDate(getToday())}</div>
     <div class="objet">Objet : information sur la reconduction de votre contrat de maintenance (article L. 215-1 du Code de la consommation)</div>
     <p>Madame, Monsieur,</p>
-    <p>Le contrat de maintenance de votre système de vidéosurveillance${x.forfaitLabel?` (forfait ${ctrEsc(x.forfaitLabel)})`:""}, conclu le ${fDate(x.dateSignature)}, arrive au terme de sa période en cours le <strong>${fDate(i.ech)}</strong>.</p>
+    <p>Le contrat de maintenance de votre ${ctrEsc(MP().systeme)}${x.forfaitLabel?` (forfait ${ctrEsc(x.forfaitLabel)})`:""}, conclu le ${fDate(x.dateSignature)}, arrive au terme de sa période en cours le <strong>${fDate(i.ech)}</strong>.</p>
     <p>Sauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${ctrEur(x.prixHT)} HT, soit ${ctrEur(ctrTTC(x.prixHT))} TTC par mois.</p>
     <p>Conformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard à la date indiquée ci-dessous.</p>
     <div class="encadre"><div class="lbl">Date limite de non-reconduction</div><div class="dt">${fDate(i.limite)}</div></div>
@@ -8534,10 +8805,11 @@ function ctrEsc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/<
 
 function CONTRAT_TEXTE(m){
   const part=m.part;
+  const P=MP(), V=!!P.video;
   const arts=[
     {n:1,t:"Objet du contrat",b:[
-      ["p","Le présent contrat a pour objet de définir les conditions dans lesquelles le Prestataire assure la maintenance préventive et corrective du système de vidéosurveillance/vidéoprotection installé chez le Client (ci-après « le Système »), afin d'en garantir le bon fonctionnement, la disponibilité et la conformité réglementaire pendant toute la durée du contrat."],
-      ["p","Le Système concerné est décrit en Annexe 1 (liste et localisation du matériel : caméras, enregistreurs/NVR, stockage, alimentations, câblage, accès réseau et logiciels associés)."],
+      ["p",`Le présent contrat a pour objet de définir les conditions dans lesquelles le Prestataire assure ${P.contratObjet}, afin d'en garantir le bon fonctionnement, la disponibilité et la conformité réglementaire pendant toute la durée du contrat.`],
+      ["p",`Le Système concerné est décrit en Annexe 1 (liste et localisation du matériel : ${P.composants}).`],
     ]},
     {n:2,t:"Durée du contrat",b:part?[
       ["p","Le présent contrat est conclu pour une durée ferme de SOIXANTE (60) mois à compter de sa date de signature (ou de la date de réception du Système si celle-ci est postérieure), mentionnée en fin de document."],
@@ -8551,14 +8823,7 @@ function CONTRAT_TEXTE(m){
     {n:3,t:"Description des prestations de maintenance",b:[
       ["sub","3.1 Maintenance préventive"],
       ["p","Le Prestataire réalise des visites de contrôle périodiques selon la fréquence définie en Annexe 2, comprenant notamment :"],
-      ["bullets",[
-        "Vérification du bon fonctionnement des caméras et de la qualité d'image (netteté, champ de vision, horodatage) ;",
-        "Contrôle de l'enregistreur/NVR, de la capacité et de l'intégrité de stockage ;",
-        "Vérification des alimentations, connectiques, fixations et protections contre les intempéries ;",
-        "Contrôle des accès réseau, mises à jour de firmware et paramètres de sécurité ;",
-        "Nettoyage des équipements accessibles (dômes, caissons) ;",
-        "Vérification de la conformité de la signalétique et des durées de conservation des enregistrements.",
-      ]],
+      ["bullets",P.preventif],
       ["sub","3.2 Maintenance corrective"],
       ["p","En cas de dysfonctionnement signalé par le Client ou détecté par le Prestataire, ce dernier intervient afin de diagnostiquer la panne et procéder à sa remise en état, par intervention sur site ou, lorsque la nature de l'incident le permet, par diagnostic téléphonique préalable."],
       ["sub","3.3 Délais d'intervention"],
@@ -8567,13 +8832,13 @@ function CONTRAT_TEXTE(m){
         `Panne bloquante (arrêt total du Système) : intervention sous ${m.delaiBloquant} ;`,
         `Panne partielle (dysfonctionnement d'un ou plusieurs éléments sans arrêt total) : intervention sous ${m.delaiPartiel}.`,
       ]],
-      ["p","Le Prestataire ne propose pas de prestation de télésurveillance ni de télémaintenance à distance ; toute intervention corrective nécessite un déplacement sur site, sauf simple échange téléphonique de premier niveau."],
+      V?["p","Le Prestataire ne propose pas de prestation de télésurveillance ni de télémaintenance à distance ; toute intervention corrective nécessite un déplacement sur site, sauf simple échange téléphonique de premier niveau."]:null,
     ]},
     {n:4,t:"Exclusions",b:[
       ["p","Sont exclus du présent contrat, sauf devis accepté séparément :"],
       ["bullets",[
         "Le remplacement de matériel hors d'usage suite à vandalisme, vol, foudre, dégât des eaux, incendie, ou tout sinistre relevant de l'assurance du Client ;",
-        "Les extensions du Système (ajout de caméras, de canaux d'enregistrement, extension de la couverture réseau) ;",
+        P.extension,
         "Les dommages résultant d'une mauvaise utilisation, d'une intervention par un tiers non habilité, ou du non-respect des préconisations du Prestataire ;",
         "Les frais liés à un abonnement internet/télécom défaillant ou insuffisant pour le fonctionnement du Système ;",
         "Les mises à niveau majeures de logiciel ou de matériel non liées à un dysfonctionnement.",
@@ -8584,8 +8849,8 @@ function CONTRAT_TEXTE(m){
         "Assurer les prestations avec diligence et selon les règles de l'art ;",
         "Intervenir dans les délais convenus à l'Article 3.3 ;",
         "Tenir un registre des interventions (fiches d'intervention/rapports) tenu à disposition du Client ;",
-        "Informer le Client de toute anomalie constatée susceptible d'affecter la conformité RGPD/CSI du dispositif ;",
-        "Respecter la confidentialité des données et images auxquelles il pourrait avoir accès dans le cadre de ses interventions.",
+        V?"Informer le Client de toute anomalie constatée susceptible d'affecter la conformité RGPD/CSI du dispositif ;":"Informer le Client de toute anomalie constatée lors des visites ;",
+        V?"Respecter la confidentialité des données et images auxquelles il pourrait avoir accès dans le cadre de ses interventions.":"Respecter la confidentialité des informations auxquelles il pourrait avoir accès dans le cadre de ses interventions.",
       ]],
     ]},
     {n:6,t:"Obligations du Client",b:[
@@ -8614,9 +8879,9 @@ function CONTRAT_TEXTE(m){
     {n:8,t:"Responsabilité et assurance",b:[
       ["p","Le Prestataire est tenu à une obligation de moyens dans l'exécution des prestations de maintenance. Sa responsabilité ne pourra être engagée en cas de dommage résultant d'un cas de force majeure, d'un fait du Client ou d'un tiers, ou d'une cause étrangère au Système."],
       ["p","Le Prestataire déclare être couvert par une assurance responsabilité civile professionnelle pour l'ensemble de son activité."],
-      ["p","Le Client demeure seul responsable de la conformité de l'usage du Système au regard de la réglementation applicable (RGPD, Code de la sécurité intérieure), notamment, le cas échéant, de l'autorisation préfectorale préalable, de l'information des personnes concernées et de la durée de conservation des images."],
+      V?["p","Le Client demeure seul responsable de la conformité de l'usage du Système au regard de la réglementation applicable (RGPD, Code de la sécurité intérieure), notamment, le cas échéant, de l'autorisation préfectorale préalable, de l'information des personnes concernées et de la durée de conservation des images."]:null,
     ]},
-    {n:9,t:"Protection des données personnelles",b:[
+    !V?null:{n:9,t:"Protection des données personnelles",b:[
       ["p",(part?"Dans la mesure où le traitement des images captées par le Système relève du règlement (UE) 2016/679 (RGPD), notamment lorsque le Système filme des tiers ou un espace ouvert au public, le Client":"Le Client")+" agit en qualité de responsable de traitement et le Prestataire en qualité de sous-traitant au sens de l'article 28 du RGPD. Le traitement confié au Prestataire a pour seule finalité la maintenance du Système, pour la durée du contrat ; il porte sur les images et enregistrements vidéo des personnes se trouvant dans le champ des caméras (occupants, salariés, visiteurs, passants)."],
       ["p","Le Prestataire s'engage à :"],
       ["bullets",[
@@ -8672,7 +8937,7 @@ function CONTRAT_TEXTE(m){
     ["p","☐ Je demande expressément que les prestations commencent avant la fin du délai de rétractation."],
     ["p","Le Prestataire rembourse la totalité des sommes versées, déduction faite le cas échéant du montant proportionnel ci-dessus, au plus tard quatorze (14) jours à compter de la réception de la décision de rétractation."],
   ]});
-  return arts;
+  return arts.filter(Boolean).map((a,i)=>({...a,n:i+1,b:a.b.filter(Boolean)}));
 }
 
 // Annexe 3 (particulier uniquement) : formulaire type de rétractation (annexe à l'article R. 221-1 du Code de la consommation)
@@ -8681,7 +8946,7 @@ function CONTRAT_FORMULAIRE(m){
   return [
     ["p","(Veuillez compléter et renvoyer le présent formulaire uniquement si vous souhaitez vous rétracter du contrat.)"],
     ["p",`À l'attention de ${m.prestataire.nom}, ${contact} :`],
-    ["p","Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de services ci-dessous : contrat de maintenance du système de vidéosurveillance."],
+    ["p",`Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de services ci-dessous : ${MP().video?"contrat de maintenance du système de vidéosurveillance":"contrat de maintenance — "+MP().contratSous}.`],
     ["p","Conclu le : ______________________________"],
     ["p","Nom du consommateur : ______________________________"],
     ["p","Adresse du consommateur : ______________________________"],
@@ -8706,8 +8971,9 @@ function contratForfaitAuto(nbCameras){
 }
 function contratMaxCameras(){ const fs=TH.contratForfaits||[]; const last=fs[fs.length-1]; return last&&last.max!=null?last.max:null; }
 function forfaitLabel(f){
-  if(f.max==null) return `${f.min} caméras et plus`;
-  return f.min===f.max?`${f.min} caméra${f.min>1?"s":""}`:`${f.min} à ${f.max} caméras`;
+  const u=MP().unite;
+  if(f.max==null) return `${f.min} ${u[1]} et plus`;
+  return f.min===f.max?`${f.min} ${f.min>1?u[1]:u[0]}`:`${f.min} à ${f.max} ${u[1]}`;
 }
 function buildContratModel(clientId,opts){
   const c=CLIENTS.find(x=>x.id===clientId)||{};
@@ -8764,15 +9030,15 @@ function contratRecapRows(m){
     ["TVA applicable",`${String(CONTRAT_TVA).replace(".",",")} % (Martinique)`],
     ["Délai panne bloquante",m.delaiBloquant],
     ["Délai panne partielle",m.delaiPartiel],
-    ["Télésurveillance / télémaintenance","Non proposée — interventions sur site uniquement"],
-  ].concat(maxC&&m.c.nbCameras>maxC?[["Nombre de caméras",`${m.c.nbCameras} (au-delà de ${maxC} : tarification sur devis)`]]:[]);
+  ].concat(MP().video?[["Télésurveillance / télémaintenance","Non proposée — interventions sur site uniquement"]]:[]).concat(maxC&&m.c.nbCameras>maxC?[[`Nombre de ${MP().unite[1]}`,`${m.c.nbCameras} (au-delà de ${maxC} : tarification sur devis)`]]:[]);
 }
 function contratNoteGrille(){
   const maxC=contratMaxCameras();
-  return (maxC?`Au-delà de ${maxC} caméras, une tarification sur devis est établie. `:"")+"Chaque forfait comprend l'ensemble des prestations décrites à l'Article 3 du présent contrat.";
+  return (maxC?`Au-delà de ${maxC} ${MP().unite[1]}, une tarification sur devis est établie. `:"")+"Chaque forfait comprend l'ensemble des prestations décrites à l'Article 3 du présent contrat.";
 }
 function contratAnnexe1(m){
-  return `${m.c.nbCameras?`Système composé de ${m.c.nbCameras} caméra${m.c.nbCameras>1?"s":""}. `:""}[Compléter : marques/modèles, localisation, enregistreur(s), capacité de stockage, durée de conservation, schéma d'implantation le cas échéant.]`;
+  const P=MP();
+  return `${m.c.nbCameras?`Système composé de ${m.c.nbCameras} ${uniteTxt(m.c.nbCameras)}. `:""}${P.video?"[Compléter : marques/modèles, localisation, enregistreur(s), capacité de stockage, durée de conservation, schéma d'implantation le cas échéant.]":`[Compléter : description et localisation des éléments couverts (${P.composants}).]`}`;
 }
 
 function modalContrat(clientId){
@@ -8783,8 +9049,8 @@ function modalContrat(clientId){
   const surDevis=maxC&&c.nbCameras>maxC;
   const versionAuto=c.cat==="Pro"?"pro":"part";
   showModal(`Contrat de maintenance — ${c.nom}`,`
-    ${!c.nbCameras?`<div style="background:#fffbeb;border:1.5px solid #fcd34d;color:#92400e;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">Nombre de caméras non renseigné sur la fiche client — choisissez le forfait manuellement, ou <button style="border:none;background:none;color:#6d28d9;text-decoration:underline;cursor:pointer;font:inherit;padding:0" onclick="closeModal();modalClient('${c.id}')">complétez la fiche</button>.</div>`:""}
-    ${surDevis?`<div style="background:#eff6ff;border:1.5px solid #93c5fd;color:#1e40af;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">${c.nbCameras} caméras : au-delà de ${maxC}, tarif sur devis — indiquez la mensualité personnalisée ci-dessous.</div>`:""}
+    ${!c.nbCameras?`<div style="background:#fffbeb;border:1.5px solid #fcd34d;color:#92400e;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">Nombre de ${MP().unite[1]} non renseigné sur la fiche client — choisissez le forfait manuellement, ou <button style="border:none;background:none;color:#6d28d9;text-decoration:underline;cursor:pointer;font:inherit;padding:0" onclick="closeModal();modalClient('${c.id}')">complétez la fiche</button>.</div>`:""}
+    ${surDevis?`<div style="background:#eff6ff;border:1.5px solid #93c5fd;color:#1e40af;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">${c.nbCameras} ${MP().unite[1]} : au-delà de ${maxC}, tarif sur devis — indiquez la mensualité personnalisée ci-dessous.</div>`:""}
     <div class="field"><label>Version du contrat</label>
       <select id="ctr-version">
         <option value="part"${versionAuto==="part"?" selected":""}>Client particulier (consommateur)</option>
@@ -8865,7 +9131,7 @@ function genererContratPDF(clientId){
     @media print{body{padding:30px 36px}}
   </style></head><body>
     <h1 class="title">CONTRAT DE MAINTENANCE</h1>
-    <div class="sub">Système de vidéosurveillance / vidéoprotection</div>
+    <div class="sub">${ctrEsc(MP().contratSous)}</div>
     <div class="duree">Durée : 60 mois · ${m.part?"Client particulier":"Client professionnel"}</div>
 
     <h2 class="entre">Entre les soussignés</h2>
@@ -8889,7 +9155,7 @@ function genererContratPDF(clientId){
     <p class="art-p">${ctrEsc(contratAnnexe1(m))}</p>
 
     <h2 class="annexe">Annexe 2 – Grille tarifaire et fréquence des visites</h2>
-    <p style="margin-bottom:8px">Le forfait applicable au Client est précisé ci-dessous, en fonction du nombre de caméras composant le Système :</p>
+    <p style="margin-bottom:8px">Le forfait applicable au Client est précisé ci-dessous, en fonction du nombre de ${ctrEsc(MP().unite[1])} composant le Système :</p>
     <table class="grille">
       <tr><th>Forfait</th><th>Système</th><th>Mensualité HT</th><th>Mensualité TTC</th><th>Sélection</th></tr>
       ${m.forfaits.map(f=>`<tr${f.id===m.forfaitId?' class="sel"':""}><td>${ctrEsc(f.label)}</td><td>${forfaitLabel(f)}</td><td>${ctrEur(f.prix)}</td><td>${ctrEur(ctrTTC(f.prix))}</td><td>${f.id===m.forfaitId?"☑":"☐"}</td></tr>`).join("")}
@@ -8969,7 +9235,7 @@ function buildContratDocx(m){
       ]})]})},
       children:[
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:"CONTRAT DE MAINTENANCE",bold:true,size:40,color:NAVY})]}),
-        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:"Système de vidéosurveillance / vidéoprotection",size:26,color:BLUE})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:MP().contratSous,size:26,color:BLUE})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:300},children:[new TextRun({text:`Durée : 60 mois · ${m.part?"Client particulier":"Client professionnel"}`,italics:true,size:22,color:"555555"})]}),
         heading("Entre les soussignés"),
         p("LE PRESTATAIRE :"),
@@ -8996,7 +9262,7 @@ function buildContratDocx(m){
         heading("Annexe 1 – Description du système",true),
         p(contratAnnexe1(m)),
         heading("Annexe 2 – Grille tarifaire et fréquence des visites"),
-        p("Le forfait applicable au Client est précisé ci-dessous, en fonction du nombre de caméras composant le Système :"),
+        p(`Le forfait applicable au Client est précisé ci-dessous, en fonction du nombre de ${MP().unite[1]} composant le Système :`),
         new Table({width:{size:9200,type:WidthType.DXA},columnWidths:W,borders:borders(),rows:forfaitRows}),
         new Paragraph({spacing:{before:100,after:150},children:[new TextRun({text:contratNoteGrille(),italics:true,size:20,color:"555555"})]}),
         rowsTable(contratRecapRows(m)),
@@ -9082,6 +9348,7 @@ function renderPanel(){
   else if(activePanel==="entreprise") pc.innerHTML=renderEntreprisePanel();
   else if(activePanel==="emails")     pc.innerHTML=renderEmailsPanel();
   else if(activePanel==="contrats")   pc.innerHTML=renderContratsPanel();
+  else if(activePanel==="metier")     pc.innerHTML=renderMetierPanel();
   else if(activePanel==="rubs")     pc.innerHTML=renderRubsPanel();
   else if(activePanel==="settings") pc.innerHTML=renderSettingsPanel();
   else if(activePanel==="journal")  pc.innerHTML=renderJournalPanel();
@@ -9491,6 +9758,7 @@ function renderSettingsPanel(){
         <!-- Navigation réglages -->
         ${reglageGroupe("Entreprise",[
           reglageItem("🏢","Informations de l'entreprise","Nom, logo, coordonnées, mentions légales, comptabilité","entreprise"),
+          hasRole("admin")?reglageItem(METIERS[metierId()].icone,"Métier",METIERS[metierId()].label,"metier"):"",
           reglageItem("🎨","Apparence","Thème, couleurs, police","theme"),
           reglageItem("📋","Menu","Ordre, icônes et rubriques affichées","rubs")])}
         ${reglageGroupe("Documents et e-mails",[
@@ -9591,7 +9859,7 @@ function renderSigMailReglages(){
     ${f("nom","Nom du signataire","Prénom NOM")}
     ${f("poste","Fonction","Présidente, Gérant…")}
     ${f("societe","Entreprise","")}
-    ${f("slogan","Accroche (facultatif)","Vidéosurveillance · IA · Domotique")}
+    ${f("slogan","Accroche (facultatif)",MP().ex.slogan)}
     ${f("tel1","Téléphone 1","0696 00 00 00","tel")}
     ${f("tel2","Téléphone 2 (facultatif)","","tel")}
     ${f("email","E-mail","contact@votre-entreprise.fr","email")}
@@ -9700,14 +9968,14 @@ function renderContratsPanel(){
         <div class="p-field"><label class="field-label">Indemnit&eacute; r&eacute;siliation anticip&eacute;e particulier (% des mensualit&eacute;s restantes)</label><input type="number" min="0" max="100" value="${TH.contratIndemnitePart!=null?TH.contratIndemnitePart:20}" oninput="TH.contratIndemnitePart=Number(this.value);saveData()"/></div>
         <div class="p-field"><label class="field-label">Texte l&eacute;gal &mdash; Annexe 4 (particuliers)</label><div style="font-size:11px;color:#94a3b8;margin-bottom:4px;line-height:1.4">Copiez depuis L&eacute;gifrance le texte int&eacute;gral de l&rsquo;article L. 215-4 du Code de la consommation et des articles qu&rsquo;il cite, puis collez-le ici (un paragraphe par ligne).</div><textarea rows="6" style="width:100%;font-size:12px" oninput="TH.contratTexteL215=this.value;saveData()">${ctrEsc(TH.contratTexteL215||"")}</textarea></div>
 
-    ${reglageTitre("Grille tarifaire","Mini et maxi de caméras, prix HT par mois")}
+    ${reglageTitre("Grille tarifaire",`Mini et maxi de ${MP().unite[1]}, prix HT par mois`)}
         <div class="p-field">
           ${(TH.contratForfaits||[]).map((f,i)=>`
             <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
               <input type="text" value="${f.label}" style="flex:1.3" oninput="TH.contratForfaits[${i}].label=this.value;saveData()" placeholder="Nom"/>
-              <input type="number" min="0" value="${f.min}" style="width:52px" title="Mini caméras" oninput="TH.contratForfaits[${i}].min=Number(this.value);saveData()"/>
+              <input type="number" min="0" value="${f.min}" style="width:52px" title="Mini ${MP().unite[1]}" oninput="TH.contratForfaits[${i}].min=Number(this.value);saveData()"/>
               <span style="color:#94a3b8;font-size:12px">à</span>
-              <input type="number" min="0" value="${f.max==null?'':f.max}" style="width:52px" placeholder="∞" title="Maxi caméras (vide = illimité)" oninput="TH.contratForfaits[${i}].max=this.value===''?null:Number(this.value);saveData()"/>
+              <input type="number" min="0" value="${f.max==null?'':f.max}" style="width:52px" placeholder="∞" title="Maxi ${MP().unite[1]} (vide = illimité)" oninput="TH.contratForfaits[${i}].max=this.value===''?null:Number(this.value);saveData()"/>
               <input type="number" min="0" value="${f.prix}" style="width:66px" title="€ HT / mois" oninput="TH.contratForfaits[${i}].prix=Number(this.value);saveData()"/>
               <span style="color:#94a3b8;font-size:11px">€/mois</span>
             </div>`).join("")}
@@ -9811,6 +10079,7 @@ window.addEventListener("resize",function(){
 
 // Charger les données locales avant tout rendu
 loadData();
+appliquerMetier();
 
 // Vérifier la session Supabase Auth, puis synchroniser (scopé au tenant) avant d'afficher
 async function bootApp(){
@@ -9833,6 +10102,7 @@ async function bootApp(){
     initSidebar();
     renderNav();
     renderPage();
+    verifierMetier();
     // Snapshot quotidien automatique (1 par jour max, en arrière-plan)
     createBackupSnapshot(false);
   } else {

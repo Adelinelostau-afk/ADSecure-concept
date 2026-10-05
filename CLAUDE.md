@@ -10,3 +10,9 @@
 ## Supabase
 - Projet « AD Secure » (`tcszogqlvqpxrtdirkto`, région UE). Isolation entre entreprises par RLS + trigger `profiles_guard` (pas d'auto-promotion, pas de changement de tenant).
 - Le rôle `anon` n'a aucun droit sur les tables ; les pages publiques passent par des fonctions Edge.
+
+## Profils métier
+- Registre `METIERS` dans l'appli (sécurité, électricité, plomberie/CVC, bâtiment, services, générique). `TH.metier` = profil choisi ; `TH.metierPerso` = listes personnalisées par l'abonné ; `MP()` = profil effectif ; `appliquerMetier()` recalcule `PARC_TYPES`, `PARC_ICON`, `PARC_CAT_TYPE`, `RI_CHECK` et écrit `TH.systemeLibelle` / `TH.accesMateriel` (lus par les relances).
+- AD Secure est forcé sur `securite` (ADS_TH). Ses contrats et dossiers de remise doivent rester identiques au mot près : vérifier par comparaison avant toute mise en production.
+- Ajouter un métier = ajouter un objet dans `METIERS` + son id dans `METIER_ORDRE`.
+- À faire : la fonction Edge `relances-auto` (shared.js) contient encore « système de vidéosurveillance » et « l'accès au matériel (enregistreur, caméras) » en dur ; les remplacer par `TH.systemeLibelle || …` et `TH.accesMateriel || …` avant le premier abonné d'un autre métier.
