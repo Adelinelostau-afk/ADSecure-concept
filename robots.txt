@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /app.html
 Disallow: /signer.html
+Disallow: /test.html
 
 Sitemap: https://www.adsecureconcept.fr/sitemap.xml
