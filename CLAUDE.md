@@ -16,3 +16,8 @@
 - AD Secure est forcé sur `securite` (ADS_TH). Ses contrats et dossiers de remise doivent rester identiques au mot près : vérifier par comparaison avant toute mise en production.
 - Ajouter un métier = ajouter un objet dans `METIERS` + son id dans `METIER_ORDRE`.
 - À faire : la fonction Edge `relances-auto` (shared.js) contient encore « système de vidéosurveillance » et « l'accès au matériel (enregistreur, caméras) » en dur ; les remplacer par `TH.systemeLibelle || …` et `TH.accesMateriel || …` avant le premier abonné d'un autre métier.
+
+## Inscription et connexion
+- `inscription.html` (publique, noindex tant que non validée) appelle la fonction Edge `inscription` (verify_jwt false) : crée tenant (statut `essai`, `essai_fin` = +14 j, `metier`, `plan` 1-3/4-7/8+), `app_data` initial, profil admin, envoie l'invitation (redirection app.html ou test.html si `?test`) et prévient contact@. Anti-abus : champ piège + 5 inscriptions/IP/jour (`inscriptions_log`).
+- Connexion : « Mot de passe oublié », écran de choix du mot de passe à l'arrivée d'un lien invite/recovery (`AUTH_LIEN`), blocage à la fin de l'essai (`essai_fin` dépassée).
+- Après validation : promouvoir test.html → app.html, retirer le noindex d'inscription.html et ajouter le bouton « Essai gratuit » sur logiciel.html.

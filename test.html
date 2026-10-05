@@ -651,6 +651,7 @@ if(/\/test[^/]*\.html$/i.test(location.pathname)){
         style="width:100%;padding:12px 16px;border-radius:11px;border:1.5px solid rgba(26,33,24,0.15);font-size:14px;color:#1A2118;background:#F7F4ED;outline:none;font-family:'Inter',-apple-system,sans-serif;box-sizing:border-box;transition:border-color 0.2s"
         onfocus="this.style.borderColor='#475569'" onblur="this.style.borderColor=''"
         onkeydown="if(event.key==='Enter')doLogin()"/>
+      <div style="text-align:right;margin-top:8px"><a href="#" onclick="motDePasseOublie();return false" style="font-size:12.5px;font-weight:600;color:#475569;text-decoration:underline;cursor:pointer">Mot de passe oublié ?</a></div>
     </div>
     <div id="login-error" style="display:none;color:#991b1b;font-size:12px;font-weight:600;margin-bottom:14px;padding:9px 14px;background:#fef2f2;border-radius:9px;border:1px solid #fecaca">⚠️ Identifiants incorrects</div>
     <button onclick="doLogin()"
@@ -659,6 +660,7 @@ if(/\/test[^/]*\.html$/i.test(location.pathname)){
       onmouseout="this.style.background='#1A2118';this.style.transform=''">
       Se connecter <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
     </button>
+    <div style="text-align:center;margin-top:16px;font-size:13px;color:#64748b">Pas encore de compte ? <a id="lien-essai" href="inscription.html" style="font-weight:700;color:#3286A0;text-decoration:underline">Essai gratuit de 14 jours</a></div>
     <div style="text-align:center;margin-top:20px;padding-top:20px;border-top:1px solid rgba(26,33,24,0.1)">
       <a href="index.html" style="font-size:13px;font-weight:600;color:rgba(26,33,24,0.38);display:inline-flex;align-items:center;gap:6px;transition:color 0.2s"
         onmouseover="this.style.color='#475569'" onmouseout="this.style.color='rgba(26,33,24,0.38)'">← Retour au site</a>
@@ -802,11 +804,66 @@ function checkLogin(){
 async function loadProfileAndTenant(userId){
   // Récupère le profil (rôle, tenant) et les infos du tenant associé — protégé par RLS
   const {data:profile,error}=await sbClient.from("profiles")
-    .select("id,tenant_id,role,nom,actif,tenants(id,nom,plan,statut_abonnement,theme)")
+    .select("id,tenant_id,role,nom,actif,tenants(id,nom,plan,statut_abonnement,theme,essai_fin)")
     .eq("id",userId).maybeSingle();
   if(error || !profile) return null;
   return profile;
 }
+
+// ── Mot de passe oublié / choix du mot de passe ──
+function loginMsg(txt,ok){
+  const err=document.getElementById("login-error");if(!err)return;
+  err.textContent=txt;err.style.display="block";
+  err.style.color=ok?"#15803d":"";err.style.background=ok?"#f0fdf4":"";err.style.borderColor=ok?"#86efac":"";
+}
+async function motDePasseOublie(){
+  const email=(document.getElementById("login-input").value||"").trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ loginMsg("Saisissez d'abord votre adresse e-mail, puis touchez « Mot de passe oublié ? »."); document.getElementById("login-input").focus(); return; }
+  loginMsg("Envoi en cours…",true);
+  const {error}=await sbClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  // Même message que le compte existe ou non : on ne révèle pas quelles adresses sont inscrites
+  if(error&&/rate|limit|seconds/i.test(error.message)) loginMsg("Un e-mail vient déjà d'être envoyé. Patientez une minute avant de réessayer.");
+  else loginMsg("Si un compte existe pour "+email+", un e-mail vient de vous être envoyé avec un lien pour choisir un nouveau mot de passe. Pensez à regarder dans les courriers indésirables.",true);
+}
+window.motDePasseOublie=motDePasseOublie;
+
+async function afficherChoixMdp(){
+  document.getElementById("login-screen").style.display="flex";
+  document.getElementById("app-screen").style.display="none";
+  const {data}=await sbClient.auth.getSession();
+  const session=data&&data.session;
+  const card=document.querySelector("#login-screen .login-card");
+  const champ="width:100%;padding:12px 16px;border-radius:11px;border:1.5px solid rgba(26,33,24,0.15);font-size:14px;color:#1A2118;background:#F7F4ED;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:12px";
+  const titre=AUTH_LIEN.type==="invite"?"Bienvenue ! Choisissez votre mot de passe":"Choisissez un nouveau mot de passe";
+  if(!session){
+    card.innerHTML=`<div style="text-align:center;font-family:'Lora',Georgia,serif;font-size:21px;font-weight:700;margin-bottom:12px">Lien expiré</div>
+      <p style="font-size:14px;color:#475569;text-align:center;margin-bottom:18px">Ce lien n'est plus valable (il ne sert qu'une fois et expire au bout de 24 heures). Revenez à la connexion et touchez « Mot de passe oublié ? » pour en recevoir un nouveau.</p>
+      <a href="${location.pathname}" style="display:block;text-align:center;padding:13px;border-radius:999px;background:#1A2118;color:#F7F4ED;font-weight:700">Retour à la connexion</a>`;
+    return;
+  }
+  card.innerHTML=`<div style="text-align:center;font-family:'Lora',Georgia,serif;font-size:21px;font-weight:700;margin-bottom:6px">${titre}</div>
+    <p style="font-size:13px;color:#64748b;text-align:center;margin-bottom:18px">${pE(session.user.email||"")}</p>
+    <input id="mdp1" type="password" placeholder="Nouveau mot de passe (8 caractères minimum)" autocomplete="new-password" style="${champ}"/>
+    <input id="mdp2" type="password" placeholder="Confirmez le mot de passe" autocomplete="new-password" style="${champ}" onkeydown="if(event.key==='Enter')enregistrerMdp()"/>
+    <div id="mdp-err" style="display:none;color:#991b1b;font-size:12.5px;font-weight:600;margin-bottom:12px;padding:9px 14px;background:#fef2f2;border-radius:9px;border:1px solid #fecaca"></div>
+    <button id="mdp-btn" onclick="enregistrerMdp()" style="width:100%;padding:14px;border-radius:999px;border:none;background:#1A2118;color:#F7F4ED;cursor:pointer;font-weight:700;font-size:14.5px;font-family:inherit">Enregistrer mon mot de passe</button>`;
+  document.getElementById("mdp1").focus();
+}
+async function enregistrerMdp(){
+  const a=document.getElementById("mdp1").value,b=document.getElementById("mdp2").value;
+  const err=document.getElementById("mdp-err"),btn=document.getElementById("mdp-btn");
+  const e=m=>{err.textContent="⚠️ "+m;err.style.display="block";btn.disabled=false;btn.textContent="Enregistrer mon mot de passe";};
+  if(a.length<8) return e("Le mot de passe doit contenir au moins 8 caractères.");
+  if(!/[A-Za-z]/.test(a)||!/[0-9]/.test(a)) return e("Utilisez au moins une lettre et un chiffre.");
+  if(a!==b) return e("Les deux mots de passe ne sont pas identiques.");
+  btn.disabled=true;btn.textContent="Enregistrement…";
+  const {data,error}=await sbClient.auth.updateUser({password:a});
+  if(error) return e(/weak|pwned|leaked|compromised/i.test(error.message)?"Ce mot de passe est trop courant ou est apparu dans une fuite de données : choisissez-en un autre.":"Enregistrement impossible : "+error.message);
+  const email=(data&&data.user&&data.user.email)||"";
+  await sbClient.auth.signOut();
+  location.replace(location.pathname+"?mdp=ok&e="+encodeURIComponent(email));
+}
+window.enregistrerMdp=enregistrerMdp;
 
 async function doLogin(){
   const email=document.getElementById("login-input").value.trim();
@@ -829,6 +886,13 @@ async function doLogin(){
     err.style.display="block";err.style.color="";err.style.background="";err.style.borderColor="";
     await sbClient.auth.signOut();
     document.getElementById("pwd-input").value="";
+    return;
+  }
+  const T=profile.tenants||{};
+  if(T.statut_abonnement==="essai" && T.essai_fin && new Date(T.essai_fin)<new Date()){
+    err.textContent="Votre essai gratuit est terminé. Pour continuer avec AD Management et retrouver vos données, contactez-nous : contact@adsecureconcept.fr";
+    err.style.display="block";err.style.color="";err.style.background="";err.style.borderColor="";
+    await sbClient.auth.signOut();
     return;
   }
   if(profile.tenants && profile.tenants.statut_abonnement==="suspendu"){
@@ -1229,6 +1293,12 @@ function testBloque(quoi){
   alert("🧪 Version de test : "+quoi+" est désactivé ici pour ne pas toucher aux vraies données ni écrire à de vrais clients.");
   return true;
 }
+// Lien reçu par e-mail (invitation ou mot de passe oublié) : lu avant que Supabase ne l'efface
+const AUTH_LIEN=(function(){
+  const h=new URLSearchParams((location.hash||"").replace(/^#/,""));
+  const q=new URLSearchParams(location.search);
+  return {type:h.get("type")||"",erreur:h.get("error_description")||q.get("error_description")||"",mdpOk:q.get("mdp")==="ok",email:q.get("e")||""};
+})();
 const SUPABASE_URL="https://tcszogqlvqpxrtdirkto.supabase.co";
 const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjc3pvZ3FsdnFweHJ0ZGlya3RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxNzQ0MzMsImV4cCI6MjEwNTc1MDQzM30.nw3AhyUqsvlvYSDQCzx8eLFBMIvK2I1QUtgFD-t7Qyo";
 const sbClient=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
@@ -10083,6 +10153,16 @@ appliquerMetier();
 
 // Vérifier la session Supabase Auth, puis synchroniser (scopé au tenant) avant d'afficher
 async function bootApp(){
+  if(AD_TEST){ const l=document.getElementById("lien-essai"); if(l) l.href="inscription.html?test"; }
+  if(AUTH_LIEN.type==="invite"||AUTH_LIEN.type==="recovery"){ sessionStorage.removeItem("gp_user"); await afficherChoixMdp(); return; }
+  if(AUTH_LIEN.mdpOk||AUTH_LIEN.erreur){
+    history.replaceState(null,"",location.pathname);
+    if(AUTH_LIEN.email) document.getElementById("login-input").value=AUTH_LIEN.email;
+    setTimeout(()=>{
+      if(AUTH_LIEN.mdpOk){ loginMsg("✓ Mot de passe enregistré. Connectez-vous avec votre nouveau mot de passe.",true); document.getElementById("pwd-input").focus(); }
+      else loginMsg("Ce lien n'est plus valable. Touchez « Mot de passe oublié ? » pour en recevoir un nouveau.");
+    },50);
+  }
   if(checkLogin()){
     // La session sessionStorage existe : on vérifie qu'elle est toujours valide côté Supabase Auth
     const {data:sessionData}=await sbClient.auth.getSession();

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Essai gratuit AD Management — AD Secure Concept</title>
+<meta name="description" content="Essayez gratuitement AD Management pendant 14 jours, sans carte bancaire : clients, devis, factures, chantiers, stock et contrats de maintenance."/>
+<meta name="robots" content="noindex"/>
+<link rel="icon" href="logo.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<header id="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand">
+      <img src="logo.png" alt="AD Secure Concept"/>
+      <span class="brand-text">AD Secure<span>Concept</span></span>
+    </a>
+    <nav class="main-nav"><a href="index.html" class="">Accueil</a>
+<a href="services.html" class="">Services</a>
+<a href="secteurs.html" class="">Secteurs</a>
+<a href="logiciel.html" class="active">Logiciel</a>
+<a href="apropos.html" class="">À propos</a>
+<a href="contact.html" class="">Contact</a></nav>
+    <div style="display:flex;align-items:center;gap:12px">
+      <a href="app.html" class="header-admin" title="Connexion AD Management" aria-label="Connexion AD Management"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1.5"/></svg></a>
+      <a href="contact.html" class="header-cta">Demander un devis <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+    </div>
+    <button class="burger" onclick="document.getElementById('mmenu').classList.add('open')">☰</button>
+  </div>
+</header>
+<div class="mobile-menu" id="mmenu">
+  <div class="mobile-menu-head">
+    <a href="index.html" class="brand"><img src="logo.png" style="height:32px" alt=""/></a>
+    <button class="burger" onclick="document.getElementById('mmenu').classList.remove('open')">✕</button>
+  </div>
+  <a href="index.html">Accueil</a>
+<a href="services.html">Services</a>
+<a href="secteurs.html">Secteurs</a>
+<a href="logiciel.html">Logiciel</a>
+<a href="apropos.html">À propos</a>
+<a href="contact.html">Contact</a>
+  <a href="contact.html" class="header-cta">Demander un devis</a>
+  <a href="app.html" class="header-admin-mobile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1.5"/></svg> Connexion AD Management</a>
+</div>
+
+
+<style>
+.insc{max-width:820px;margin:0 auto}
+.insc fieldset{border:none;margin:0 0 30px;padding:0}
+.insc legend{font-family:var(--display);font-size:20px;font-weight:700;color:var(--nuit);margin-bottom:6px}
+.insc .aide{font-size:13.5px;color:var(--ink2);margin-bottom:16px}
+.grille-choix{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.choix{position:relative;cursor:pointer}
+.choix input{position:absolute;opacity:0;pointer-events:none}
+.choix>span{display:flex;flex-direction:column;gap:2px;height:100%;padding:14px;border-radius:14px;border:1.5px solid var(--line);background:var(--cream);transition:border-color .2s,background .2s}
+.choix .ic{font-size:22px;line-height:1.2}
+.choix strong{font-size:14.5px;color:var(--ink)}
+.choix small{font-size:12px;color:var(--ink2)}
+.choix input:checked+span{border-color:var(--teal1);background:rgba(50,134,160,.08);box-shadow:0 0 0 1px var(--teal1)}
+.choix input:focus-visible+span{outline:2px solid var(--teal1);outline-offset:2px}
+.formule .prix{font-family:var(--display);font-size:24px;font-weight:700;color:var(--nuit);margin-top:6px}
+.formule .prix small{font-family:var(--body);font-size:12px;font-weight:500}
+.note{font-size:13px;color:var(--ink2);margin-top:12px;line-height:1.55}
+.cgv{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:6px 0 20px;cursor:pointer}
+.cgv input{width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--teal1)}
+.cgv a,.note a,.deja a{color:var(--teal1);text-decoration:underline}
+.erreur{display:none;background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:11px;padding:12px 14px;font-size:14px;margin-bottom:14px}
+.deja{text-align:center;font-size:14px;color:var(--ink2);margin-top:18px}
+.piege{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.etapes{text-align:left;max-width:440px;margin:18px auto 0;font-size:14px;color:var(--ink2);padding-left:20px}
+.etapes li{margin-bottom:6px}
+@media (max-width:760px){.grille-choix{grid-template-columns:1fr 1fr}.contact-form{padding:24px 18px}}
+@media (max-width:420px){.grille-choix{grid-template-columns:1fr}}
+</style>
+
+<section class="page-header">
+  <div class="wrap">
+    <div class="breadcrumb"><a href="index.html">Accueil</a> / <a href="logiciel.html">Logiciel</a> / Essai gratuit</div>
+    <span class="eyebrow">AD Management</span>
+    <h1>Essayez AD Management gratuitement pendant 14 jours.</h1>
+    <p class="lead">Sans carte bancaire. Votre espace est créé en une minute, adapté à votre métier ; vous recevez ensuite un e-mail pour choisir votre mot de passe.</p>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="contact-form insc">
+      <form id="f-insc" novalidate>
+        <fieldset>
+          <legend>Votre entreprise</legend>
+          <div class="form-field"><label for="i-entreprise">Nom de l'entreprise *</label><input id="i-entreprise" required autocomplete="organization" placeholder="Ex : Martin Électricité"/></div>
+          <div class="form-row">
+            <div class="form-field" style="margin:0"><label for="i-siret">SIRET (facultatif)</label><input id="i-siret" inputmode="numeric" placeholder="14 chiffres"/></div>
+            <div class="form-field" style="margin:0"><label for="i-tel">Téléphone</label><input id="i-tel" type="tel" autocomplete="tel" placeholder="0696 00 00 00"/></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Votre métier</legend>
+          <p class="aide">Les types de matériel, les listes de contrôle, le contrat de maintenance et le dossier de remise s'adaptent à votre activité. Vous pourrez tout ajuster ensuite.</p>
+          <div class="grille-choix"><label class="choix"><input type="radio" name="metier" value="securite" checked/><span><span class="ic">📹</span><strong>Sécurité</strong><small>vidéosurveillance, alarme</small></span></label><label class="choix"><input type="radio" name="metier" value="electricite"/><span><span class="ic">⚡</span><strong>Électricité</strong><small>bornes, photovoltaïque</small></span></label><label class="choix"><input type="radio" name="metier" value="plomberie"/><span><span class="ic">🚿</span><strong>Plomberie</strong><small>chauffage, climatisation</small></span></label><label class="choix"><input type="radio" name="metier" value="batiment"/><span><span class="ic">🧱</span><strong>Bâtiment</strong><small>maçonnerie, menuiserie, peinture</small></span></label><label class="choix"><input type="radio" name="metier" value="services"/><span><span class="ic">🌿</span><strong>Services</strong><small>nettoyage, espaces verts, piscine</small></span></label><label class="choix"><input type="radio" name="metier" value="generique"/><span><span class="ic">🧰</span><strong>Autre métier</strong><small>vocabulaire neutre</small></span></label></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Votre formule</legend>
+          <p class="aide">Selon le nombre de personnes qui utiliseront l'appli. Rien n'est à payer pendant l'essai.</p>
+          <div class="grille-choix"><label class="choix formule"><input type="radio" name="formule" value="1-3" checked/><span><strong>1 à 3 utilisateurs</strong><span class="prix">40 €<small> HT / mois</small></span></span></label><label class="choix formule"><input type="radio" name="formule" value="4-7"/><span><strong>4 à 7 utilisateurs</strong><span class="prix">50 €<small> HT / mois</small></span></span></label><label class="choix formule"><input type="radio" name="formule" value="8+"/><span><strong>8 utilisateurs et plus</strong><span class="prix">60 €<small> HT / mois</small></span></span></label></div>
+          <p class="note">À la fin de l'essai, vous décidez de vous abonner ou non : sans réponse de votre part, l'accès est simplement suspendu. L'abonnement est souscrit pour 12 mois, puis reconduit mois par mois. Une personnalisation à vos couleurs et vos documents est proposée en option (350 € HT, une fois).</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Votre compte administrateur</legend>
+          <div class="form-row">
+            <div class="form-field" style="margin:0"><label for="i-nom">Nom et prénom *</label><input id="i-nom" required autocomplete="name" placeholder="Prénom NOM"/></div>
+            <div class="form-field" style="margin:0"><label for="i-email">E-mail *</label><input id="i-email" type="email" required autocomplete="email" placeholder="vous@entreprise.fr"/></div>
+          </div>
+          <div class="piege" aria-hidden="true"><label>Site web <input id="i-site" tabindex="-1" autocomplete="off"/></label></div>
+        </fieldset>
+
+        <label class="cgv"><input type="checkbox" id="i-cgv"/><span>J'accepte les conditions générales de vente et d'utilisation d'AD Management (envoyées sur simple demande à <a href="mailto:contact@adsecureconcept.fr">contact@adsecureconcept.fr</a>) et la <a href="politique-confidentialite.html" target="_blank">politique de confidentialité</a>.</span></label>
+
+        <div class="erreur" id="i-err" role="alert"></div>
+        <button type="submit" class="form-submit" id="i-btn">Démarrer mon essai gratuit</button>
+        <p class="deja">Déjà un compte ? <a id="lien-connexion" href="app.html">Se connecter</a></p>
+      </form>
+
+      <div class="form-success" id="i-ok">
+        <div class="check-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h3>Votre espace est prêt !</h3>
+        <p>Un e-mail vient d'être envoyé à <strong id="i-ok-email"></strong>.</p>
+        <ol class="etapes">
+          <li>Ouvrez cet e-mail (pensez à regarder dans les courriers indésirables).</li>
+          <li>Cliquez sur le lien pour choisir votre mot de passe.</li>
+          <li>Votre essai gratuit court jusqu'au <strong id="i-ok-fin"></strong>.</li>
+        </ol>
+        <p class="note">Une question ? Écrivez-nous à <a href="mailto:contact@adsecureconcept.fr">contact@adsecureconcept.fr</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="logo.png" alt=""/>
+          <div class="footer-brand-text">AD Secure<span>Concept</span></div>
+        </div>
+        <p class="foot-desc">Vidéosurveillance, alarme et contrôle d'accès en Martinique, pour particuliers, commerces, entreprises et collectivités. Une vigilance discrète, une tranquillité durable.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Navigation</h4>
+        <a href="index.html">Accueil</a>
+        <a href="services.html">Services</a>
+        <a href="secteurs.html">Secteurs</a>
+        <a href="logiciel.html">Logiciel AD Management</a>
+        <a href="apropos.html">À propos</a>
+        <a href="contact.html">Contact</a>
+      </div>
+      <div class="footer-col">
+        <h4>Services</h4>
+        <a href="services.html#videosurveillance">Vidéosurveillance</a>
+        <a href="services.html#alarme">Alarme &amp; détection</a>
+        <a href="services.html#controle-acces">Contrôle d'accès</a>
+        <a href="services.html#maintenance">Maintenance &amp; SAV</a>
+      </div>
+      <div class="footer-col">
+        <h4>Contact</h4>
+        <a href="tel:+596696439584">0696 43 95 84</a>
+        <a href="tel:+596696342304">0696 34 23 04</a>
+        <a href="mailto:contact@adsecureconcept.fr">contact@adsecureconcept.fr</a>
+        <a href="contact.html">Quartier Bellay, 97228 Sainte-Luce</a>
+        <a href="app.html" style="color:rgba(247,244,237,0.45);font-size:12px;margin-top:8px">Connexion AD Management</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 AD Secure Concept SAS — SIREN 108 443 326</span>
+      <span><a href="mentions-legales.html">Mentions légales</a> · <a href="politique-confidentialite.html">Confidentialité</a></span>
+    </div>
+  </div>
+</footer>
+<script>
+document.addEventListener('click',function(e){ if(e.target.closest('.mobile-menu a')) document.getElementById('mmenu').classList.remove('open'); });
+var TEST=/[?&]test\b/.test(location.search);
+if(TEST) document.getElementById('lien-connexion').href='test.html';
+var FN="https://tcszogqlvqpxrtdirkto.supabase.co/functions/v1/inscription";
+var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjc3pvZ3FsdnFweHJ0ZGlya3RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxNzQ0MzMsImV4cCI6MjEwNTc1MDQzM30.nw3AhyUqsvlvYSDQCzx8eLFBMIvK2I1QUtgFD-t7Qyo";
+function val(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+function erreur(m){ var e=document.getElementById('i-err'); e.textContent=m; e.style.display='block'; e.scrollIntoView({behavior:'smooth',block:'center'}); }
+document.getElementById('f-insc').addEventListener('submit',async function(ev){
+  ev.preventDefault();
+  document.getElementById('i-err').style.display='none';
+  var d={entreprise:val('i-entreprise'),siret:val('i-siret'),tel:val('i-tel'),nom:val('i-nom'),email:val('i-email'),site_web:val('i-site'),
+    metier:(document.querySelector('input[name=metier]:checked')||{}).value,formule:(document.querySelector('input[name=formule]:checked')||{}).value,
+    cgv:document.getElementById('i-cgv').checked,cible:TEST?'test':'app'};
+  if(d.entreprise.length<2) return erreur("Indiquez le nom de votre entreprise.");
+  if(d.nom.length<2) return erreur("Indiquez vos nom et prénom.");
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email)) return erreur("Adresse e-mail invalide.");
+  if(!d.cgv) return erreur("Cochez la case pour accepter les conditions générales.");
+  var btn=document.getElementById('i-btn'); btn.disabled=true; btn.textContent='Création de votre espace…';
+  try{
+    var r=await fetch(FN,{method:'POST',headers:{'Content-Type':'application/json',apikey:ANON,Authorization:'Bearer '+ANON},body:JSON.stringify(d)});
+    var j=await r.json().catch(function(){return {};});
+    if(!r.ok||j.error){ btn.disabled=false; btn.textContent='Démarrer mon essai gratuit'; return erreur(j.error||"Inscription impossible, réessayez dans un instant."); }
+    document.getElementById('i-ok-email').textContent=d.email;
+    document.getElementById('i-ok-fin').textContent=j.essai_fin?new Date(j.essai_fin).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'dans 14 jours';
+    document.getElementById('f-insc').style.display='none';
+    document.getElementById('i-ok').classList.add('show');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){ btn.disabled=false; btn.textContent='Démarrer mon essai gratuit'; erreur("Connexion impossible. Vérifiez votre accès internet et réessayez."); }
+});
+</script>
+</body>
+</html>
