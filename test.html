@@ -5329,9 +5329,8 @@ function renderDevis(){
                 <button class="btn-sm" onclick="genererDevisPDF('${d.id}')" title="PDF" style="border-color:#86efac;background:#f0fdf4;color:#15803d">📄</button>
                 <button class="btn-sm" onclick="modalEnvoiDevis('${d.id}')" title="Envoyer par e-mail${(d.envois||[]).length?" (déjà envoyé le "+fDate(d.envois[d.envois.length-1].date)+")":""}" style="border-color:#bae6fd;background:#f0f9ff;color:#0369a1">✉️${(d.envois||[]).length?"✓":""}</button>
                 ${signBouton(d)}
-                ${vssBouton(d)}
                 <button class="btn-sm btn-edit" onclick="modalDevis('${d.id}')">✏️</button>
-                ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersBC('${d.id}')" title="Passer en bon de commande" style="border-color:#fde68a;background:#fffbeb;color:#b45309">📋</button>`:""}
+                ${vssBouton(d)}
                 ${d.statut==="accepte"?`<button class="btn-sm" onclick="devisVersFacture('${d.id}')" title="Convertir en facture" style="border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8">🧾</button>`:""}
                 <button class="btn-sm btn-danger" onclick="delDevis('${d.id}')">🗑️</button>
               </div></td>
@@ -6306,10 +6305,19 @@ function signBouton(d){
 // ── Validation d'un devis sans signature (accord par téléphone, e-mail, SMS, oral…) ──
 const VSS_MOTIFS=[["telephone","Accord par téléphone"],["email","Accord par e-mail"],["sms","Accord par SMS / WhatsApp"],["oral","Accord oral sur place"],["autre","Autre"]];
 function vssMotifLbl(k){const m=VSS_MOTIFS.find(x=>x[0]===k);return m?m[1]:(k||"—");}
+// Bouton unique « Bon de commande » :
+// devis signé ou déjà accepté → bon de commande créé directement ;
+// sinon → on note comment le client a accepté, puis le bon de commande est créé.
 function vssBouton(d){
-  const fait=!!d.validationSansSign;
-  if(d.signatureElec||d.statut==="refuse"||(!fait&&(devisEstArchive(d)||d.statut==="transforme")))return "";
-  return `<button class="btn-sm" onclick="modalValidationSansSign('${d.id}')" title="${fait?"Validé sans signature — voir le détail":"Valider sans signature et créer le bon de commande"}" style="border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9">${fait?"👍✓":"👍"}</button>`;
+  const archive=devisEstArchive(d)||d.statut==="transforme";
+  if(archive) return d.validationSansSign?`<button class="btn-sm" onclick="modalValidationSansSign('${d.id}')" title="Validé sans signature — voir le détail" style="border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9">👍✓</button>`:"";
+  if(d.statut==="refuse") return "";
+  return `<button class="btn-sm" onclick="devisBonDeCommande('${d.id}')" title="Passer en bon de commande" style="border-color:#fde68a;background:#fffbeb;color:#b45309">📋</button>`;
+}
+function devisBonDeCommande(id){
+  const d=DEVIS.find(x=>x.id===id);if(!d)return;
+  if(d.signatureElec||d.statut==="accepte") devisVersBC(id);
+  else modalValidationSansSign(id);
 }
 function vssLocalNow(){const d=new Date();const z=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;}
 function modalValidationSansSign(devisId){
@@ -6327,7 +6335,8 @@ function modalValidationSansSign(devisId){
        <button class="btn-cancel" onclick="closeModal()">Fermer</button>`);
     return;
   }
-  showModal(`👍 Valider sans signature — ${sgE(d.num)}`,`
+  showModal(`📋 Bon de commande — ${sgE(d.num)}`,`
+    <div style="font-size:14px;font-weight:700;color:#1A2118;margin-bottom:6px">Ce devis n'est pas signé.</div>
     <div style="font-size:13px;color:#475569;margin-bottom:12px;line-height:1.5">Le devis de ${sgE(cli?cli.nom:"ce client")} (${fMoney(devisTTC(d))} TTC) sera validé et <b>le bon de commande créé aussitôt</b> (le devis passe aux archives). La façon dont le client a donné son accord est conservée et figure sur le PDF du devis et du bon de commande.</div>
     ${BCCLIENTS.some(b=>b.devisId===d.id)?`<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:8px 10px;margin-bottom:10px">⚠️ Un bon de commande existe déjà pour ce devis : un second sera créé.</div>`:""}
     <div class="field"><label>Comment le client a-t-il accepté ?</label>
@@ -6336,7 +6345,7 @@ function modalValidationSansSign(devisId){
     <div class="field"><label>Note (facultatif)</label><textarea id="vss-note" style="font-size:16px;min-height:70px" placeholder="Ex. : accord de M. Dupont au téléphone, acompte prévu à la commande"></textarea></div>
     <div id="vss-msg" style="display:none;margin-top:8px;padding:10px 12px;border-radius:9px;font-size:13px;background:#fef2f2;color:#991b1b"></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
-     <button class="btn-save" style="background:#6d28d9" onclick="enregistrerValidationSansSign('${d.id}')">👍 Valider et créer le bon de commande</button>`);
+     <button class="btn-save" style="background:#6d28d9" onclick="enregistrerValidationSansSign('${d.id}')">📋 Valider et créer le bon de commande</button>`);
 }
 function enregistrerValidationSansSign(devisId){
   const d=DEVIS.find(x=>x.id===devisId);if(!d)return;
