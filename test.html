@@ -6196,7 +6196,7 @@ function genererBCClientPDF(id){
       </div>
     </div>`:""}
     <div class="sign">
-      <div class="sign-box"><div class="lbl">Date et signature client</div><div style="font-size:11px;color:#94a3b8">« Bon pour commande »</div></div>
+      ${b.validationSansSign?`<div class="sign-box"><div class="lbl">Accord du client</div><div style="font-size:12px;font-weight:700;color:#1A2118;margin-top:4px">Validé sans signature</div><div style="font-size:11px;color:#475569;margin-top:2px">${vssMotifLbl(b.validationSansSign.motif)} — le ${dtFr(b.validationSansSign.date)}</div>${b.validationSansSign.note?`<div style="font-size:10px;color:#64748b;margin-top:3px;white-space:pre-line">${String(b.validationSansSign.note).replace(/</g,"&lt;")}</div>`:""}</div>`:`<div class="sign-box"><div class="lbl">Date et signature client</div><div style="font-size:11px;color:#94a3b8">« Bon pour commande »</div></div>`}
       <div class="sign-box"><div class="lbl">${TH.nom} ${TH.sous}</div></div>
     </div>
     <div class="footer">
@@ -6307,9 +6307,9 @@ function signBouton(d){
 const VSS_MOTIFS=[["telephone","Accord par téléphone"],["email","Accord par e-mail"],["sms","Accord par SMS / WhatsApp"],["oral","Accord oral sur place"],["autre","Autre"]];
 function vssMotifLbl(k){const m=VSS_MOTIFS.find(x=>x[0]===k);return m?m[1]:(k||"—");}
 function vssBouton(d){
-  if(d.signatureElec||devisEstArchive(d)||["refuse","transforme"].includes(d.statut))return "";
   const fait=!!d.validationSansSign;
-  return `<button class="btn-sm" onclick="modalValidationSansSign('${d.id}')" title="${fait?"Validé sans signature — voir le détail":"Valider sans signature"}" style="border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9">${fait?"👍✓":"👍"}</button>`;
+  if(d.signatureElec||d.statut==="refuse"||(!fait&&(devisEstArchive(d)||d.statut==="transforme")))return "";
+  return `<button class="btn-sm" onclick="modalValidationSansSign('${d.id}')" title="${fait?"Validé sans signature — voir le détail":"Valider sans signature et créer le bon de commande"}" style="border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9">${fait?"👍✓":"👍"}</button>`;
 }
 function vssLocalNow(){const d=new Date();const z=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;}
 function modalValidationSansSign(devisId){
@@ -6321,21 +6321,22 @@ function modalValidationSansSign(devisId){
       <div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:12px;padding:14px 16px;margin-bottom:14px">
         <div style="font-weight:800;color:#6d28d9;font-size:15px">${sgE(vssMotifLbl(v.motif))}</div>
         <div style="font-size:13px;color:#6d28d9">le ${sgE(dtFr(v.date))}</div></div>
-      ${[["Client",cli?cli.nom:"—"],["Montant",fMoney(devisTTC(d))+" TTC"],["Enregistré par",v.par||"—"],["Note",v.note||"—"]]
+      ${[["Client",cli?cli.nom:"—"],["Montant",fMoney(devisTTC(d))+" TTC"],["Bon de commande",v.bccNum||d.bccNum||"—"],["Enregistré par",v.par||"—"],["Note",v.note||"—"]]
         .map(([l,x])=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">${l}</span><span style="font-weight:600;text-align:right;white-space:pre-line">${sgE(x)}</span></div>`).join("")}`,
-      `<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca;margin-right:auto" onclick="annulerValidationSansSign('${d.id}')">Annuler la validation</button>
+      `${vssAnnulable(d)?`<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca;margin-right:auto" onclick="annulerValidationSansSign('${d.id}')">Annuler la validation</button>`:""}
        <button class="btn-cancel" onclick="closeModal()">Fermer</button>`);
     return;
   }
   showModal(`👍 Valider sans signature — ${sgE(d.num)}`,`
-    <div style="font-size:13px;color:#475569;margin-bottom:12px;line-height:1.5">Le devis de ${sgE(cli?cli.nom:"ce client")} (${fMoney(devisTTC(d))} TTC) passera en « Accepté ». La façon dont le client a donné son accord est conservée et figure sur le PDF.</div>
+    <div style="font-size:13px;color:#475569;margin-bottom:12px;line-height:1.5">Le devis de ${sgE(cli?cli.nom:"ce client")} (${fMoney(devisTTC(d))} TTC) sera validé et <b>le bon de commande créé aussitôt</b> (le devis passe aux archives). La façon dont le client a donné son accord est conservée et figure sur le PDF du devis et du bon de commande.</div>
+    ${BCCLIENTS.some(b=>b.devisId===d.id)?`<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:8px 10px;margin-bottom:10px">⚠️ Un bon de commande existe déjà pour ce devis : un second sera créé.</div>`:""}
     <div class="field"><label>Comment le client a-t-il accepté ?</label>
       <select id="vss-motif" style="font-size:16px">${VSS_MOTIFS.map(([k,l])=>`<option value="${k}">${l}</option>`).join("")}</select></div>
     <div class="field"><label>Date et heure de l'accord</label><input type="datetime-local" id="vss-date" value="${vssLocalNow()}" style="font-size:16px"/></div>
     <div class="field"><label>Note (facultatif)</label><textarea id="vss-note" style="font-size:16px;min-height:70px" placeholder="Ex. : accord de M. Dupont au téléphone, acompte prévu à la commande"></textarea></div>
     <div id="vss-msg" style="display:none;margin-top:8px;padding:10px 12px;border-radius:9px;font-size:13px;background:#fef2f2;color:#991b1b"></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
-     <button class="btn-save" style="background:#6d28d9" onclick="enregistrerValidationSansSign('${d.id}')">👍 Valider le devis</button>`);
+     <button class="btn-save" style="background:#6d28d9" onclick="enregistrerValidationSansSign('${d.id}')">👍 Valider et créer le bon de commande</button>`);
 }
 function enregistrerValidationSansSign(devisId){
   const d=DEVIS.find(x=>x.id===devisId);if(!d)return;
@@ -6348,19 +6349,47 @@ function enregistrerValidationSansSign(devisId){
   if(isNaN(date)){msg("Date invalide.");return;}
   if(date>new Date(Date.now()+60000)){msg("La date de l'accord ne peut pas être dans le futur.");return;}
   if(motif==="autre"&&!note){msg("Précisez dans la note comment le client a donné son accord.");return;}
-  d.validationSansSign={motif,date:date.toISOString(),note,par:currentUser?currentUser.nom:"",saisiLe:new Date().toISOString(),statutAvant:d.statut};
-  d.statut="accepte";
+  const v={motif,date:date.toISOString(),note,par:currentUser?currentUser.nom:"",saisiLe:new Date().toISOString(),statutAvant:d.statut};
+  const num=prochainNumero("BCC",BCCLIENTS);
+  const bccId=uid();
+  v.bccId=bccId;v.bccNum=num;
+  BCCLIENTS.push({
+    id:bccId,num,
+    devisId:d.id,devisNum:d.num,
+    clientId:d.clientId,
+    refChantier:d.refChantier||"",
+    date:TODAY,
+    statut:"en_cours",
+    tva:(d.tva!==undefined&&d.tva!==null)?d.tva:TVA_DEFAUT,
+    lignes:JSON.parse(JSON.stringify(d.lignes||[])),
+    validationSansSign:{motif:v.motif,date:v.date,note:v.note}
+  });
+  d.validationSansSign=v;
+  d.statut="transforme";d.bccNum=num;
   const cli=CLIENTS.find(c=>c.id===d.clientId);
-  logActivity("Devis validé sans signature",`${d.num}${cli?" — "+cli.nom:""} · ${vssMotifLbl(motif)} le ${dtFr(d.validationSansSign.date)}`);
-  saveData();closeModal();renderPage();renderNav();
+  logActivity("Devis validé sans signature",`${d.num}${cli?" — "+cli.nom:""} · ${vssMotifLbl(motif)} le ${dtFr(v.date)} → ${num}`);
+  saveData();closeModal();
+  alert(`👍 Devis ${d.num} validé sans signature.\nBon de commande ${num} créé — le devis est passé aux archives.`);
+  renderPage();renderNav();
+}
+// Annulation possible seulement si le bon de commande n'a pas encore avancé (ni règlement, ni livraison, ni facture)
+function vssAnnulable(d){
+  const v=d.validationSansSign;if(!v)return false;
+  const b=v.bccId?BCCLIENTS.find(x=>x.id===v.bccId):null;
+  if(!b)return true;
+  return b.statut==="en_cours"&&!(b.paiements&&b.paiements.length);
 }
 function annulerValidationSansSign(devisId){
   const d=DEVIS.find(x=>x.id===devisId);if(!d||!d.validationSansSign)return;
-  if(!confirm("Annuler la validation sans signature ? Le devis repassera à son statut précédent."))return;
-  const avant=d.validationSansSign.statutAvant;
-  if(d.statut==="accepte") d.statut=(avant&&avant!=="accepte")?avant:"envoye";
+  if(!vssAnnulable(d)){alert("Le bon de commande a déjà avancé (règlement, livraison ou facture) : la validation ne peut plus être annulée.");return;}
+  const v=d.validationSansSign;
+  if(!confirm(`Annuler la validation sans signature ?${v.bccNum?"\nLe bon de commande "+v.bccNum+" sera supprimé et":"\nLe"} devis repassera à son statut précédent.`))return;
+  if(v.bccId) BCCLIENTS=BCCLIENTS.filter(x=>x.id!==v.bccId);
+  const avant=v.statutAvant;
+  d.statut=(avant&&!["accepte","transforme"].includes(avant))?avant:"envoye";
+  delete d.bccNum;
   delete d.validationSansSign;
-  logActivity("Validation sans signature annulée",d.num);
+  logActivity("Validation sans signature annulée",`${d.num}${v.bccNum?" (bon de commande "+v.bccNum+" supprimé)":""}`);
   saveData();closeModal();renderPage();renderNav();
 }
 
