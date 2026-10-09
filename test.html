@@ -824,7 +824,7 @@ async function motDePasseOublie(){
   loginMsg("Envoi en cours…",true);
   const {error}=await sbClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   // Même message que le compte existe ou non : on ne révèle pas quelles adresses sont inscrites
-  if(error&&/rate|limit|seconds/i.test(error.message)) loginMsg("Un e-mail vient déjà d'être envoyé. Patientez une minute avant de réessayer.");
+  if(error&&/rate|limit|seconds/i.test(error.message)) loginMsg("Trop d'e-mails ont été envoyés ces derniers temps. Utilisez le dernier lien reçu, ou réessayez un peu plus tard (jusqu'à une heure).");
   else loginMsg("Si un compte existe pour "+email+", un e-mail vient de vous être envoyé avec un lien pour choisir un nouveau mot de passe. Pensez à regarder dans les courriers indésirables.",true);
 }
 window.motDePasseOublie=motDePasseOublie;
