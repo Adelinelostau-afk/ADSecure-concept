@@ -7,6 +7,11 @@
 - En mode test : données dans la table `app_data_test` (copie, bouton « Repartir des vraies données »), clé locale séparée, pas de sauvegardes, pas de relances clients, pas de lien de signature, pas de gestion des utilisateurs, e-mails redirigés vers l'utilisateur connecté.
 - Toute nouvelle fonction qui écrit dans une table partagée ou qui contacte un client doit être neutralisée en mode test (`testBloque(...)`).
 
+## Historique des mises en production
+- 09/10/2026 : app.html = test.html (profils métier, inscription/connexion, devis sans signature + bouton unique BC, dossier de remise par e-mail, correctifs PDF/Apparence, factures fournisseurs reçues dans Administration avec fichier joint + catégorie, rapprochement bancaire fournisseurs). Contrats et dossiers de remise AD Secure vérifiés identiques (rendu comparé).
+- La liste `FOURNISSEURS` est désormais enregistrée avec les données (avant : jamais sauvegardée, reconstituée au chargement depuis COMMANDES/FACFOURN).
+- Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
+
 ## Supabase
 - Projet « AD Secure » (`tcszogqlvqpxrtdirkto`, région UE). Isolation entre entreprises par RLS + trigger `profiles_guard` (pas d'auto-promotion, pas de changement de tenant).
 - Le rôle `anon` n'a aucun droit sur les tables ; les pages publiques passent par des fonctions Edge.
