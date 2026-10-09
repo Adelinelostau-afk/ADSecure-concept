@@ -2416,59 +2416,6 @@ function renderStock(){
         </table>
       </div>
     </div>
-    <!-- Factures fournisseurs -->
-    ${(()=>{
-      const actives=FACFOURN.filter(f=>ffStatutReel(f)!=="payee");
-      const archivees=FACFOURN.filter(f=>ffStatutReel(f)==="payee");
-      const liste=(ffFilter==="archives"?archivees:actives).slice().sort((a,b)=>(a.ech||"").localeCompare(b.ech||""));
-      const resteTotal=actives.reduce((s,f)=>s+ffReste(f),0);
-      const enRetard=actives.filter(f=>ffStatutReel(f)==="retard");
-      const sous30=actives.filter(f=>ffStatutReel(f)!=="retard"&&f.ech&&daysDiff(f.ech)<=30);
-      return`
-      <div class="section-card" style="background:${TH.card}">
-        <div class="section-head">
-          <div><div class="section-title" style="color:${TH.txt}">Factures fournisseurs</div>
-          <div class="section-sub">${fMoney(resteTotal)} à payer${enRetard.length?` · ${enRetard.length} en retard`:""}</div></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${[["actives","À payer"],["archives","📁 Payées"+(archivees.length?" ("+archivees.length+")":"")]].map(([k,lbl])=>`
-              <button onclick="ffFilter='${k}';renderPage()" style="padding:7px 13px;border-radius:999px;border:1.5px solid ${ffFilter===k?TH.c1:"#e2e8f0"};background:${ffFilter===k?TH.c1:"#fff"};color:${ffFilter===k?"#fff":"#64748b"};cursor:pointer;font-size:12px;font-weight:600;font-family:'Inter',sans-serif">${lbl}</button>`).join("")}
-            <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalFF()">＋ Nouvelle facture</button>
-          </div>
-        </div>
-        ${actives.length>0&&ffFilter!=="archives"?`
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:0 18px 14px">
-          <div style="background:#fef2f2;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#991b1b">En retard</div><div style="font-size:17px;font-weight:800;color:#991b1b">${fMoney(enRetard.reduce((s,f)=>s+ffReste(f),0))}</div></div>
-          <div style="background:#fffbeb;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#b45309">Sous 30 jours</div><div style="font-size:17px;font-weight:800;color:#b45309">${fMoney(sous30.reduce((s,f)=>s+ffReste(f),0))}</div></div>
-          <div style="background:${TH.bg};border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TH.txt}88">Total dû</div><div style="font-size:17px;font-weight:800;color:${TH.txt}">${fMoney(resteTotal)}</div></div>
-        </div>`:""}
-        <div style="overflow-x:auto">
-          <table>
-            <thead style="background:${TH.bg}"><tr>
-              <th style="color:${TH.txt}77">N°</th><th style="color:${TH.txt}77">Fournisseur</th><th style="color:${TH.txt}77">Bon</th>
-              <th style="color:${TH.txt}77">Échéance</th><th style="color:${TH.txt}77">Montant TTC</th><th style="color:${TH.txt}77">Reste dû</th>
-              <th style="color:${TH.txt}77">Statut</th><th style="color:${TH.txt}77">Actions</th>
-            </tr></thead>
-            <tbody>${liste.length===0?`<tr><td colspan="8" style="text-align:center;color:${TH.txt}55;padding:24px;font-size:13px">${ffFilter==="archives"?"Aucune facture payée":"Aucune facture fournisseur en attente."}</td></tr>`:liste.map(f=>{
-              const sr=ffStatutReel(f),st=FF_STATUTS[sr]||FF_STATUTS.a_payer;
-              const jours=f.ech?daysDiff(f.ech):null;
-              return`<tr>
-                <td style="font-weight:700;color:${TH.c1};cursor:pointer;text-decoration:underline" onclick="modalFF('${f.id}')">${f.num}${f.numFour?`<div style="font-size:10px;font-weight:500;color:${TH.txt}77;text-decoration:none">${f.numFour}</div>`:""}</td>
-                <td style="color:${TH.txt}BB;font-size:12px">${f.four||"—"}</td>
-                <td style="color:${TH.txt}BB;font-size:12px">${f.bcRef||"—"}</td>
-                <td style="color:${TH.txt}BB;font-size:12px">${f.ech?fDate(f.ech):"—"}${sr!=="payee"&&jours!==null?`<div style="font-size:10px;font-weight:700;color:${jours<0?"#991b1b":jours<=7?"#b45309":TH.txt+"77"}">${jours<0?`+${-jours} j de retard`:`dans ${jours} j`}</div>`:""}</td>
-                <td style="font-weight:700;color:${TH.txt}">${fMoney(ffTTC(f))}</td>
-                <td style="font-weight:700;color:${ffReste(f)>0?"#b45309":"#15803d"}">${fMoney(ffReste(f))}</td>
-                <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}</td>
-                <td style="white-space:nowrap">
-                  ${sr!=="payee"?`<button class="btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac" onclick="modalPaiementFF('${f.id}')" title="Enregistrer un règlement">💰</button>`:""}
-                  <button class="btn-sm btn-edit" style="margin-left:4px" onclick="modalFF('${f.id}')">✏️</button>
-                  <button class="btn-sm btn-danger" style="margin-left:4px" onclick="delFF('${f.id}')">🗑️</button>
-                </td>
-              </tr>`;}).join("")}</tbody>
-          </table>
-        </div>
-      </div>`;
-    })()}
     <!-- Stock -->
     <div class="section-card" style="background:${TH.card}">
       <div class="section-head">
@@ -3778,8 +3725,62 @@ function rapproDefaire(txId){
   saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();renderNav();
 }
 
+// ── Factures fournisseurs : section affichée dans « Administration » ──
+function renderFacFournSection(){
+      const actives=FACFOURN.filter(f=>ffStatutReel(f)!=="payee");
+      const archivees=FACFOURN.filter(f=>ffStatutReel(f)==="payee");
+      const liste=(ffFilter==="archives"?archivees:actives).slice().sort((a,b)=>(a.ech||"").localeCompare(b.ech||""));
+      const resteTotal=actives.reduce((s,f)=>s+ffReste(f),0);
+      const enRetard=actives.filter(f=>ffStatutReel(f)==="retard");
+      const sous30=actives.filter(f=>ffStatutReel(f)!=="retard"&&f.ech&&daysDiff(f.ech)<=30);
+      return`
+      <div class="section-card" style="background:${TH.card}">
+        <div class="section-head">
+          <div><div class="section-title" style="color:${TH.txt}">Factures fournisseurs</div>
+          <div class="section-sub">${fMoney(resteTotal)} à payer${enRetard.length?` · ${enRetard.length} en retard`:""}</div></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${[["actives","À payer"],["archives","📁 Payées"+(archivees.length?" ("+archivees.length+")":"")]].map(([k,lbl])=>`
+              <button onclick="ffFilter='${k}';renderPage()" style="padding:7px 13px;border-radius:999px;border:1.5px solid ${ffFilter===k?TH.c1:"#e2e8f0"};background:${ffFilter===k?TH.c1:"#fff"};color:${ffFilter===k?"#fff":"#64748b"};cursor:pointer;font-size:12px;font-weight:600;font-family:'Inter',sans-serif">${lbl}</button>`).join("")}
+            <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalFF()">＋ Nouvelle facture</button>
+          </div>
+        </div>
+        ${actives.length>0&&ffFilter!=="archives"?`
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:0 18px 14px">
+          <div style="background:#fef2f2;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#991b1b">En retard</div><div style="font-size:17px;font-weight:800;color:#991b1b">${fMoney(enRetard.reduce((s,f)=>s+ffReste(f),0))}</div></div>
+          <div style="background:#fffbeb;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#b45309">Sous 30 jours</div><div style="font-size:17px;font-weight:800;color:#b45309">${fMoney(sous30.reduce((s,f)=>s+ffReste(f),0))}</div></div>
+          <div style="background:${TH.bg};border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TH.txt}88">Total dû</div><div style="font-size:17px;font-weight:800;color:${TH.txt}">${fMoney(resteTotal)}</div></div>
+        </div>`:""}
+        <div style="overflow-x:auto">
+          <table>
+            <thead style="background:${TH.bg}"><tr>
+              <th style="color:${TH.txt}77">N°</th><th style="color:${TH.txt}77">Fournisseur</th><th style="color:${TH.txt}77">Bon</th>
+              <th style="color:${TH.txt}77">Échéance</th><th style="color:${TH.txt}77">Montant TTC</th><th style="color:${TH.txt}77">Reste dû</th>
+              <th style="color:${TH.txt}77">Statut</th><th style="color:${TH.txt}77">Actions</th>
+            </tr></thead>
+            <tbody>${liste.length===0?`<tr><td colspan="8" style="text-align:center;color:${TH.txt}55;padding:24px;font-size:13px">${ffFilter==="archives"?"Aucune facture payée":"Aucune facture fournisseur en attente."}</td></tr>`:liste.map(f=>{
+              const sr=ffStatutReel(f),st=FF_STATUTS[sr]||FF_STATUTS.a_payer;
+              const jours=f.ech?daysDiff(f.ech):null;
+              return`<tr>
+                <td style="font-weight:700;color:${TH.c1};cursor:pointer;text-decoration:underline" onclick="modalFF('${f.id}')">${f.num}${f.numFour?`<div style="font-size:10px;font-weight:500;color:${TH.txt}77;text-decoration:none">${f.numFour}</div>`:""}</td>
+                <td style="color:${TH.txt}BB;font-size:12px">${f.four||"—"}</td>
+                <td style="color:${TH.txt}BB;font-size:12px">${f.bcRef||"—"}</td>
+                <td style="color:${TH.txt}BB;font-size:12px">${f.ech?fDate(f.ech):"—"}${sr!=="payee"&&jours!==null?`<div style="font-size:10px;font-weight:700;color:${jours<0?"#991b1b":jours<=7?"#b45309":TH.txt+"77"}">${jours<0?`+${-jours} j de retard`:`dans ${jours} j`}</div>`:""}</td>
+                <td style="font-weight:700;color:${TH.txt}">${fMoney(ffTTC(f))}</td>
+                <td style="font-weight:700;color:${ffReste(f)>0?"#b45309":"#15803d"}">${fMoney(ffReste(f))}</td>
+                <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}</td>
+                <td style="white-space:nowrap">
+                  ${sr!=="payee"?`<button class="btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac" onclick="modalPaiementFF('${f.id}')" title="Enregistrer un règlement">💰</button>`:""}
+                  <button class="btn-sm btn-edit" style="margin-left:4px" onclick="modalFF('${f.id}')">✏️</button>
+                  <button class="btn-sm btn-danger" style="margin-left:4px" onclick="delFF('${f.id}')">🗑️</button>
+                </td>
+              </tr>`;}).join("")}</tbody>
+          </table>
+        </div>
+      </div>`;
+}
+
 function renderAdmin(){
-  // Les factures clients sont gérées dans la rubrique « Factures » (plus de doublon ici)
+  // Les factures clients sont gérées dans la rubrique « Factures » ; les factures fournisseurs sont ici
   return `
     <div class="section-card" style="background:${TH.card}">
       <div class="section-head">
@@ -3787,7 +3788,8 @@ function renderAdmin(){
         <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalTache()">＋ Ajouter</button>
       </div>
       <div id="taches-list">${renderTachesList()}</div>
-    </div>`;
+    </div>
+    ${renderFacFournSection()}`;
 }
 
 // ── Paiements ──────────────────────────────────────────────────────────────
