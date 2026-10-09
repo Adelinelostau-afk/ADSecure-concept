@@ -6630,7 +6630,8 @@ async function pdfChargerPolices(doc){
   }catch(e){ console.warn("Polices PDF",e); }
 }
 // Convertit un document HTML A4 en PDF (base64, sans en-tête data:)
-async function htmlVersPdfBase64(html){
+async function htmlVersPdfBase64(html,opts){
+  opts=opts||{};
   await chargerLibsPDF();
   const LARG=794, HAUT=1123; // A4 à 96 dpi
   const ifr=document.createElement("iframe");
@@ -6646,18 +6647,30 @@ async function htmlVersPdfBase64(html){
     await Promise.all([...doc.images].map(im=>im.complete?null:new Promise(ok=>{im.onload=im.onerror=ok;})));
     const hauteur=Math.max(doc.documentElement.scrollHeight,doc.body.scrollHeight);
     ifr.style.height=hauteur+"px";
-    const canvas=await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
-    const pxParPage=Math.floor(canvas.width*HAUT/LARG);
-    const nbPages=Math.max(1,Math.ceil((canvas.height-8)/pxParPage));
-    for(let i=0;i<nbPages;i++){
-      const h=Math.min(pxParPage,canvas.height-i*pxParPage);
-      const part=document.createElement("canvas"); part.width=canvas.width; part.height=h;
-      const ctx=part.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,part.width,h);
-      ctx.drawImage(canvas,0,i*pxParPage,canvas.width,h,0,0,canvas.width,h);
-      if(i>0) pdf.addPage();
-      pdf.addImage(part.toDataURL("image/jpeg",0.9),"JPEG",0,0,210,210*h/canvas.width);
+    let premiere=true;
+    // Ajoute un rendu au PDF, en le coupant sur plusieurs pages A4 s'il est trop haut
+    const ajouter=canvas=>{
+      const pxParPage=Math.floor(canvas.width*HAUT/LARG);
+      const nbPages=Math.max(1,Math.ceil((canvas.height-8)/pxParPage));
+      for(let i=0;i<nbPages;i++){
+        const h=Math.min(pxParPage,canvas.height-i*pxParPage);
+        const part=document.createElement("canvas"); part.width=canvas.width; part.height=h;
+        const ctx=part.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,part.width,h);
+        ctx.drawImage(canvas,0,i*pxParPage,canvas.width,h,0,0,canvas.width,h);
+        if(!premiere) pdf.addPage(); premiere=false;
+        pdf.addImage(part.toDataURL("image/jpeg",0.9),"JPEG",0,0,210,210*h/canvas.width);
+      }
+    };
+    const blocs=opts.pages?[...doc.querySelectorAll(opts.pages)]:[];
+    if(blocs.length){
+      // Une section = une nouvelle page (les sauts de page CSS ne sont pas lus par html2canvas)
+      for(const el of blocs){
+        ajouter(await html2canvas(el,{scale:2,useCORS:true,backgroundColor:"#ffffff",windowWidth:LARG,windowHeight:hauteur}));
+      }
+    }else{
+      ajouter(await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur}));
     }
     return pdf.output("datauristring").split(",")[1];
   }finally{ ifr.remove(); }
@@ -6688,13 +6701,24 @@ const DOC_ENVOI={
     modele:"Bonjour {contact},\n\nVeuillez trouver ci-joint le rapport {numero} de notre intervention du {date} ({type}).\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}",
     valeurs:r=>({date:r.date?RelancesCore.dateLongue(r.date):"—",type:(RI_TYPES[r.type]||"intervention").toLowerCase()}),
     apresEnvoi:()=>{}
+  },
+  remise:{
+    titre:"le dossier de remise", liste:()=>CLIENTS, num:c=>c.nom||"",
+    html:c=>{const o=remiseDefauts(c);const ri=o.sections.pv&&o.riId?INTERVENTIONS.find(x=>x.id===o.riId):null;return dossierRemiseHTML(c,o,ri,false);},
+    pages:"section.page", apercu:id=>genererDossierRemise(id),
+    client:c=>c, ttc:()=>0, prefixe:"Dossier de remise", envois:c=>{c.dossierRemise=c.dossierRemise||{};return c.dossierRemise.envois=c.dossierRemise.envois||[];},
+    cleModele:"modeleMailRemise", reperes:["contact","entreprise","signature"],
+    modele:"Bonjour {contact},\n\nVeuillez trouver ci-joint le dossier de remise de votre installation : fiche du matériel, guide d'utilisation, informations légales, procès-verbal de mise en service, garanties et contacts SAV.\n\nNous vous conseillons de le conserver précieusement. Vos identifiants de connexion vous ont été remis séparément.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}",
+    valeurs:()=>({}), apresEnvoi:()=>{}
   }
 };
+const docNum=(T,d)=>T.num?T.num(d):d.num;
+const docEnvois=(T,d)=>T.envois?T.envois(d):(d.envois=d.envois||[]);
 function docValeursMail(type,d){
   const T=DOC_ENVOI[type], cli=T.client(d);
   const emetteur=`${TH.nom} ${TH.sous||""}`.trim();
   const coord=[TH.tel,TH.email].filter(Boolean).join(" · ");
-  return {contact:cli&&cli.contact?cli.contact:"Madame, Monsieur",entreprise:cli?cli.nom:(d.client||""),numero:d.num,
+  return {contact:cli&&cli.contact?cli.contact:"Madame, Monsieur",entreprise:cli?cli.nom:(d.client||""),numero:docNum(T,d),
     montant:fMoney(T.ttc(d)),signature:SigMail.cfg(TH).actif?SigMail.court(TH,currentUser&&currentUser.id):emetteur+(coord?"\n"+coord:""),...T.valeurs(d)};
 }
 function docMessageDefaut(type,d){
@@ -6721,12 +6745,12 @@ function modalEnvoiDoc(type,id){
   const T=DOC_ENVOI[type], d=T.liste().find(x=>x.id===id); if(!d){alert("Document introuvable");return;}
   const cli=T.client(d);
   const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
-  const deja=(d.envois||[]).slice(-1)[0];
-  const fichier=`${T.prefixe} ${d.num}.pdf`;
-  showModal(`✉️ Envoyer ${T.titre} ${esc(d.num)}`,`
+  const deja=docEnvois(T,d).slice(-1)[0];
+  const fichier=`${T.prefixe} ${docNum(T,d)}.pdf`;
+  showModal(`✉️ Envoyer ${T.titre}${T.num?"":" "+esc(d.num)}`,`
     ${deja?`<div class="info-box" style="margin-bottom:12px">Déjà envoyé${type==="facture"?"e":""} le ${fDate(deja.date)} à ${esc(deja.to)}.</div>`:""}
     <div class="field"><label>Destinataire</label><input id="ev-to" type="email" value="${esc(cli&&cli.email)}" placeholder="adresse@client.fr"/></div>
-    <div class="field"><label>Objet</label><input id="ev-sujet" value="${esc(`${T.prefixe} ${d.num} — ${`${TH.nom} ${TH.sous||""}`.trim()}`)}"/></div>
+    <div class="field"><label>Objet</label><input id="ev-sujet" value="${esc(`${T.prefixe} ${T.num?"":d.num+" "}— ${`${TH.nom} ${TH.sous||""}`.trim()}`.replace("  "," "))}"/></div>
     <div class="field"><label>Message (modifiable avant l'envoi)</label><textarea id="ev-msg" style="min-height:220px">${esc(docMessageDefaut(type,d))}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         <button class="btn-sm" id="ev-modele" onclick="garderModeleDoc('${type}','${d.id}')" title="Réutiliser ce texte pour les prochains envois">💾 Garder comme modèle</button>
@@ -6746,7 +6770,7 @@ async function envoyerDoc(type,id){
   const T=DOC_ENVOI[type], d=T.liste().find(x=>x.id===id); if(!d) return;
   const cli=T.client(d);
   const to=document.getElementById("ev-to").value.trim();
-  const sujet=document.getElementById("ev-sujet").value.trim()||`${T.prefixe} ${d.num}`;
+  const sujet=document.getElementById("ev-sujet").value.trim()||`${T.prefixe} ${docNum(T,d)}`;
   let texte=document.getElementById("ev-msg").value;
   const copie=document.getElementById("ev-copie").checked;
   const avecLien=type==="devis"&&document.getElementById("ev-signer")&&document.getElementById("ev-signer").checked;
@@ -6763,22 +6787,22 @@ async function envoyerDoc(type,id){
       const ajout=`\n\n✍️ Pour accepter ce devis, vous pouvez le signer en ligne en quelques secondes :\n${url}`;
       texte=i>=0?texte.slice(0,i)+ajout+texte.slice(i):texte+ajout;
     }
-    const pdf=await htmlVersPdfBase64(T.html(d));
+    const pdf=await htmlVersPdfBase64(T.html(d),{pages:T.pages});
     btn.textContent="⟳ Envoi…";
-    const nomFichier=`${T.prefixe} ${d.num}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
+    const nomFichier=`${T.prefixe} ${docNum(T,d)}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
     const destReel=AD_TEST?(currentUser.email||""):to;
     const sujetReel=AD_TEST?"[TEST — destiné à "+to+"] "+sujet:sujet;
     const {data,error}=await sbClient.functions.invoke("relances-auto",{body:{action:"email",to:destReel,subject:sujetReel,text:texte,copie:AD_TEST?false:copie,pieceJointe:{nom:nomFichier,contenu:pdf}}});
     let msg=data&&data.error;
     if(error){ try{ const b=await error.context.json(); msg=b.error||error.message; }catch(_){ msg=error.message; } }
     if(msg) return erreur(msg);
-    d.envois=d.envois||[]; d.envois.push({date:getToday(),to});
+    docEnvois(T,d).push({date:getToday(),to});
     T.apresEnvoi(d);
     if(cli&&!cli.email) cli.email=to;
-    logActivity(`${T.prefixe} envoyé${type==="facture"?"e":""} par e-mail`,`${d.num} → ${to}`);
-    logDocument(type,d.id,d.num,cli?cli.nom:(d.client||""),T.ttc(d));
+    logActivity(`${T.prefixe} envoyé${type==="facture"?"e":""} par e-mail`,`${docNum(T,d)} → ${to}`);
+    logDocument(type,d.id,docNum(T,d),cli?cli.nom:(d.client||""),T.ttc(d));
     saveData(); closeModal(); renderPage();
-    alert(`✅ ${T.prefixe} ${d.num} envoyé${type==="facture"?"e":""} à ${to}.`);
+    alert(`✅ ${T.prefixe} ${T.num?"de "+docNum(T,d)+" ":docNum(T,d)+" "}envoyé${type==="facture"?"e":""} à ${to}.`);
   }catch(e){ erreur(e.message||String(e)); }
 }
 function modalEnvoiDevis(id){ modalEnvoiDoc("devis",id); }
@@ -8298,8 +8322,19 @@ function modalDossierRemise(clientId){
     <div class="field" style="margin-top:12px"><label>Horaires du SAV</label><input id="dr-hor" value="${pE(o.horaires)}" placeholder="Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30"/></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Fermer</button>
      ${MP().video?`<button class="btn-cancel" onclick="imprimerFicheIdentifiants('${c.id}')">🔐 Fiche identifiants</button>`:""}
+     <button class="btn-cancel" onclick="envoyerDossierRemise('${c.id}')">✉️ Envoyer par e-mail</button>
      <button class="btn-save" style="background:${TH.c1}" onclick="genererDossierRemise('${c.id}')">📘 Générer le dossier</button>`);
 }
+async function envoyerDossierRemise(clientId){
+  const c=CLIENTS.find(x=>x.id===clientId);if(!c)return;
+  const o=lireRemise(c);
+  if(!Object.values(o.sections).some(Boolean)){alert("Cochez au moins une partie du dossier.");return;}
+  showModal("Préparation…",`<div style="padding:30px;text-align:center;color:#64748b">⟳ Chargement du dossier…</div>`,`<button class="btn-cancel" onclick="closeModal()">Annuler</button>`);
+  const ri=o.sections.pv&&o.riId?INTERVENTIONS.find(x=>x.id===o.riId):null;
+  if(ri) await riPrechargerPhotos(ri);
+  modalEnvoiDoc("remise",c.id);
+}
+window.envoyerDossierRemise=envoyerDossierRemise;
 function lireRemise(c){
   const v=id=>{const e=document.getElementById(id);return e?(e.type==="checkbox"?e.checked:e.value):null;};
   const o={app:v("dr-app"),appAutre:(v("dr-app-autre")||"").trim(),conservation:Math.min(90,Math.max(1,parseInt(v("dr-cons"))||30)),
@@ -8320,7 +8355,8 @@ async function genererDossierRemise(clientId){
   logActivity("Dossier de remise généré",c.nom);logDocument("remise",c.id,"Dossier de remise",c.nom,0);
   w.document.open();w.document.write(dossierRemiseHTML(c,o,ri));w.document.close();
 }
-function dossierRemiseHTML(c,o,ri){
+function dossierRemiseHTML(c,o,ri,impression){
+  if(impression===undefined) impression=true;
   const app=remiseNomApp(o);
   const ent=`${TH.nom||""} ${TH.sous||""}`.trim();
   const logo=thLogo();
@@ -8443,7 +8479,7 @@ function dossierRemiseHTML(c,o,ri){
     .sig{flex:1;border:1px solid #e8e4dc;border-radius:8px;padding:10px 12px;min-height:120px}.sig .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700}
     .garde .sommaire{margin:60px auto 0;max-width:340px;background:#F7F4ED;border-radius:12px;padding:16px 20px;font-size:13px;line-height:1.9}
   </style></head><body>${sections.join("")}
-  <script>window.onload=()=>{setTimeout(()=>window.print(),700);}<\/script></body></html>`;
+  ${impression?`<script>window.onload=()=>{setTimeout(()=>window.print(),700);}<\/script>`:""}</body></html>`;
 }
 // Fiche à remplir à la main : rien n'est enregistré dans l'application
 function imprimerFicheIdentifiants(clientId){
