@@ -6613,6 +6613,22 @@ function chargerLibsPDF(){
   })),Promise.resolve());
   return pdfLibsPromise;
 }
+// Charge dans le document à convertir les polices de l'appli (Inter, Lora)
+const PDF_POLICES="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,600&family=Inter:wght@400;500;600;700;800&display=block";
+async function pdfChargerPolices(doc){
+  const delai=ms=>new Promise(ok=>setTimeout(ok,ms));
+  try{
+    const lk=doc.createElement("link"); lk.rel="stylesheet"; lk.href=PDF_POLICES;
+    const charge=new Promise(ok=>{lk.onload=lk.onerror=ok;});
+    doc.head.appendChild(lk);
+    await Promise.race([charge,delai(6000)]);
+    if(doc.fonts&&doc.fonts.load){
+      await Promise.race([Promise.all(["400","500","600","700","800"].map(w=>doc.fonts.load(`${w} 12px Inter`,"Aéz")).concat(
+        ["500","600","700"].map(w=>doc.fonts.load(`${w} 12px Lora`,"Aéz")))),delai(6000)]);
+    }
+    if(doc.fonts&&doc.fonts.ready) await Promise.race([doc.fonts.ready,delai(6000)]);
+  }catch(e){ console.warn("Polices PDF",e); }
+}
 // Convertit un document HTML A4 en PDF (base64, sans en-tête data:)
 async function htmlVersPdfBase64(html){
   await chargerLibsPDF();
@@ -6623,8 +6639,11 @@ async function htmlVersPdfBase64(html){
   try{
     await new Promise(ok=>{ ifr.onload=ok; ifr.srcdoc=html; });
     const doc=ifr.contentDocument;
+    // Mise en page et dessin doivent utiliser la même police : sinon html2canvas dessine
+    // chaque mot avec Inter (chargée dans l'appli) à des positions calculées avec Arial,
+    // et les mots se chevauchent (« fixationdes », « contac@ »…).
+    await pdfChargerPolices(doc);
     await Promise.all([...doc.images].map(im=>im.complete?null:new Promise(ok=>{im.onload=im.onerror=ok;})));
-    if(doc.fonts&&doc.fonts.ready) await doc.fonts.ready;
     const hauteur=Math.max(doc.documentElement.scrollHeight,doc.body.scrollHeight);
     ifr.style.height=hauteur+"px";
     const canvas=await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur});
