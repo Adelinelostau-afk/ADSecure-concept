@@ -1315,10 +1315,18 @@ function saveDataLocal(){
   }catch(e){ console.warn("Sauvegarde locale impossible:", e); }
 }
 
+// Fournisseurs : enregistrés avec les données. Anciennes données (liste jamais sauvegardée) :
+// on reconstitue la liste à partir des bons de commande et des factures reçues.
+function chargerFournisseurs(d){
+  if(Array.isArray(d.FOURNISSEURS)){ FOURNISSEURS=d.FOURNISSEURS; return; }
+  const noms=[];
+  [...(d.COMMANDES||[]),...(d.FACFOURN||[])].forEach(x=>{const n=(x&&x.four||"").trim();if(n&&!noms.some(m=>m.toLowerCase()===n.toLowerCase()))noms.push(n);});
+  FOURNISSEURS=noms.map((n,i)=>({id:"f"+Date.now().toString(36)+i,nom:n,contact:"",tel:"",email:"",cat:"",notes:""}));
+}
 function getDataObject(){
   return {
     CLIENTS, EVENTS, STOCK, COMMANDES, FACTURES, FACFOURN, TACHES, PROSPECTS, DEVIS, BCCLIENTS, DOCSHIST, CATALOGUE, CAT_PRODUITS, CAT_STOCK, UNITES, TRANSMISSIONS,
-    TH, RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS, RAPPRO
+    TH, RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS, RAPPRO, FOURNISSEURS
   };
 }
 function applyDataObject(d){
@@ -1329,6 +1337,7 @@ function applyDataObject(d){
   if(d.COMMANDES) COMMANDES=d.COMMANDES;
   if(d.FACTURES) FACTURES=d.FACTURES;
   if(d.FACFOURN && Array.isArray(d.FACFOURN)) FACFOURN=d.FACFOURN;
+  chargerFournisseurs(d);
   if(d.TACHES) TACHES=d.TACHES;
   if(d.PROSPECTS) PROSPECTS=d.PROSPECTS;
   if(d.DEVIS) DEVIS=d.DEVIS;
@@ -1565,6 +1574,7 @@ function loadData(){
     if(typeof d.pipeNextId==="number") pipeNextId=d.pipeNextId;
     if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
     if(d.FACFOURN && Array.isArray(d.FACFOURN)) FACFOURN=d.FACFOURN;
+    chargerFournisseurs(d);
     if(d.CAISSE && typeof d.CAISSE==="object") CAISSE=d.CAISSE;
     if(d.INTERVENTIONS && Array.isArray(d.INTERVENTIONS)) INTERVENTIONS=d.INTERVENTIONS;
     if(d.RAPPRO && typeof d.RAPPRO==="object") RAPPRO=d.RAPPRO;
@@ -2322,8 +2332,11 @@ const FF_STATUTS={
   retard:   {lbl:"En retard",bg:"#fee2e2",col:"#991b1b",icon:"⚠️"}
 };
 function ffTauxTVA(f){ return (f.tva!==undefined&&f.tva!==null)?f.tva:20; }
-function ffHT(f){ return (f.lignes||[]).reduce((s,l)=>s+(Number(l.qte)||0)*(Number(l.pu)||0),0); }
-function ffTTC(f){ return Math.round(ffHT(f)*(1+ffTauxTVA(f)/100)*100)/100; }
+// Factures reçues : montants saisis (montantHT / montantTVA). Anciennes factures : calcul par lignes.
+function ffNouveau(f){ return f.montantHT!==undefined&&f.montantHT!==null&&f.montantHT!==""; }
+function ffHT(f){ return ffNouveau(f)?(Number(f.montantHT)||0):(f.lignes||[]).reduce((s,l)=>s+(Number(l.qte)||0)*(Number(l.pu)||0),0); }
+function ffTVA(f){ return ffNouveau(f)?(Number(f.montantTVA)||0):Math.round(ffHT(f)*ffTauxTVA(f))/100; }
+function ffTTC(f){ return ffNouveau(f)?Math.round((ffHT(f)+ffTVA(f))*100)/100:Math.round(ffHT(f)*(1+ffTauxTVA(f)/100)*100)/100; }
 function ffPaye(f){ return (f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0); }
 function ffReste(f){ return Math.max(0,Math.round((ffTTC(f)-ffPaye(f))*100)/100); }
 function ffEstPayee(f){ return ffReste(f)<=0 && ffTTC(f)>0; }
@@ -2408,7 +2421,7 @@ function renderStock(){
               <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}</td>
               <td style="white-space:nowrap">
                 <button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe" onclick="genererBonCommandePDF('${c.id}')" title="PDF">📄</button>
-                ${c.statut==="recue"?`<button class="btn-sm" style="margin-left:4px;background:#fffbeb;color:#b45309;border:1.5px solid #fde68a" onclick="bcVersFactureFournisseur('${c.id}')" title="Créer la facture fournisseur">🧾</button>`:""}
+                ${c.statut==="recue"?`<button class="btn-sm" style="margin-left:4px;background:#fffbeb;color:#b45309;border:1.5px solid #fde68a" onclick="bcVersFactureFournisseur('${c.id}')" title="Enregistrer la facture reçue pour ce bon">🧾</button>`:""}
                 <button class="btn-sm btn-edit" style="margin-left:4px" onclick="modalBC('${c.id}')">✏️</button>
                 <button class="btn-sm btn-danger" style="margin-left:4px" onclick="delBC('${c.id}')">🗑️</button>
               </td>
@@ -2486,10 +2499,11 @@ function modalFour(id){
 }
 function saveFour(id){
   const obj={nom:document.getElementById("f-nom").value,contact:document.getElementById("f-contact").value,tel:document.getElementById("f-tel").value,email:document.getElementById("f-email").value,cat:document.getElementById("f-cat").value,notes:document.getElementById("f-notes").value};
+  if(!obj.nom.trim()){alert("Le nom est obligatoire.");return;}
   if(id){FOURNISSEURS=FOURNISSEURS.map(f=>f.id===id?{...f,...obj}:f);}else{FOURNISSEURS.push({...obj,id:uid()});}
-  closeModal();renderPage();
+  saveData();closeModal();renderPage();
 }
-function delFour(id){confirmDel("Supprimer ce fournisseur ?",function(){FOURNISSEURS=FOURNISSEURS.filter(f=>f.id!==id);renderPage();});}
+function delFour(id){confirmDel("Supprimer ce fournisseur ?",function(){FOURNISSEURS=FOURNISSEURS.filter(f=>f.id!==id);saveData();renderPage();});}
 
 // ══════════════════════════════════════════════════════════
 // ── BONS DE COMMANDE FOURNISSEURS ──────────────────────────
@@ -2584,90 +2598,156 @@ function delBC(id){
 // ══════════════════════════════════════════════════════════
 let ffDraftLignes=[];
 let ffFilter="actives";
+let ffCatFiltre="";
+let ffRecherche="";
 
+// Catégories de dépenses (personnalisables : TH.ffCats)
+const FF_CATS_DEFAUT=["Achats de matériel","Sous-traitance","Carburant et déplacements","Véhicules (entretien, location)","Loyer et charges locatives","Électricité et eau","Téléphone et internet","Logiciels et abonnements","Assurances","Honoraires (comptable, juridique)","Banque et frais financiers","Publicité et communication","Fournitures et petit équipement","Entretien et réparations","Formation","Impôts et taxes","Autre"];
+function ffCats(){ return (TH.ffCats&&TH.ffCats.length)?TH.ffCats:FF_CATS_DEFAUT.slice(); }
+function ffEsc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function ffNum(v){ return Math.round((parseFloat(String(v==null?"":v).replace(/\s/g,"").replace(",","."))||0)*100)/100; }
+
+// ── Réception d'une facture fournisseur (on la reçoit, on ne la crée pas) ──
 function modalFF(id,bcId){
   const f=id?FACFOURN.find(x=>x.id===id):null;
   const bc=bcId?COMMANDES.find(c=>c.id===bcId):null;
-  const src=f||(bc?{num:nextFfRef(),numFour:"",four:bc.four,bcId:bc.id,bcRef:bc.ref,date:getToday(),ech:addDays(getToday(),30),statut:"a_payer",tva:20,lignes:JSON.parse(JSON.stringify(bc.lignes||[])),paiements:[],notes:""}
-    :{num:nextFfRef(),numFour:"",four:FOURNISSEURS[0]?.nom||"",bcId:"",bcRef:"",date:getToday(),ech:addDays(getToday(),30),statut:"a_payer",tva:20,lignes:[{ref:"",desc:"",qte:1,pu:0}],paiements:[],notes:""});
-  ffDraftLignes=JSON.parse(JSON.stringify(src.lignes||[]));
-  if(ffDraftLignes.length===0)ffDraftLignes=[{ref:"",desc:"",qte:1,pu:0}];
-  showModal(id?`Facture fournisseur — ${src.num}`:(bc?`Facturer le bon ${bc.ref}`:"Nouvelle facture fournisseur"),`
+  const src=f||{num:nextFfRef(),numFour:"",four:bc?bc.four:"",bcId:bc?bc.id:"",bcRef:bc?bc.ref:"",
+    date:getToday(),ech:addDays(getToday(),30),cat:bc?"Achats de matériel":"",
+    montantHT:bc?Math.round(bcTotal(bc)*100)/100:"",tva:TVA_DEFAUT,montantTVA:"",notes:"",paiements:[]};
+  const ht=f?ffHT(f):src.montantHT;
+  const taux=ffTauxTVA(src);
+  const tvaEur=f?ffTVA(f):(src.montantHT!==""?Math.round(Number(src.montantHT)*taux)/100:"");
+  const cats=ffCats(); if(src.cat&&!cats.includes(src.cat)) cats.push(src.cat);
+  const bcsFour=COMMANDES.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const ancienne=f&&!ffNouveau(f)&&(f.lignes||[]).length;
+  showModal(id?`Facture reçue — ${ffEsc(src.numFour||src.num)}`:(bc?`Facture reçue pour le bon ${ffEsc(bc.ref)}`:"📥 Réceptionner une facture fournisseur"),`
+    <div class="field"><label>Facture (PDF ou photo, ${DOCS_MAX_MO} Mo max)</label>
+      ${src.piece?`<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${TH.bg};border-radius:9px;margin-bottom:8px;font-size:12.5px">
+        <span style="font-size:18px">${(src.piece.type||"").startsWith("image/")?"🖼️":"📄"}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ffEsc(src.piece.nom||"Facture")}${src.piece.taille?" · "+fTaille(src.piece.taille):""}</span>
+        <button type="button" class="btn-sm" style="border-color:#93c5fd;background:#eff6ff;color:#1d4ed8" onclick="ffVoirPiece('${f.id}')">👁️ Voir</button>
+      </div><div style="font-size:11px;color:${TH.txt}77;margin-bottom:6px">Choisir un autre fichier remplacera celui-ci.</div>`:""}
+      <input type="file" id="ff-file" accept="application/pdf,image/*"/></div>
+    <div class="field"><label>Fournisseur</label>
+      <input id="ff-four" list="ff-four-liste" value="${ffEsc(src.four||"")}" placeholder="Nom du fournisseur" autocomplete="off"/>
+      <datalist id="ff-four-liste">${FOURNISSEURS.map(x=>`<option value="${ffEsc(x.nom)}"></option>`).join("")}</datalist></div>
     <div class="field-row">
-      <div class="field"><label>N° interne</label><input id="ff-num" value="${src.num}"/></div>
-      <div class="field"><label>N° facture fournisseur</label><input id="ff-numfour" value="${src.numFour||""}" placeholder="Réf. du fournisseur"/></div>
+      <div class="field"><label>N° de la facture</label><input id="ff-numfour" value="${ffEsc(src.numFour||"")}" placeholder="Numéro indiqué sur la facture"/></div>
+      <div class="field"><label>Catégorie</label>
+        <select id="ff-cat" onchange="ffCatChange(this)">
+          <option value="">— Choisir —</option>
+          ${cats.map(c=>`<option value="${ffEsc(c)}"${src.cat===c?" selected":""}>${ffEsc(c)}</option>`).join("")}
+          <option value="__new">＋ Nouvelle catégorie…</option>
+        </select></div>
     </div>
-    <div class="field"><label>Fournisseur</label><select id="ff-four">${FOURNISSEURS.map(x=>`<option${src.four===x.nom?" selected":""}>${x.nom}</option>`).join("")}</select></div>
-    ${src.bcRef?`<div style="background:${TH.bg};border-radius:9px;padding:9px 13px;margin-bottom:14px;font-size:12px;color:${TH.txt}AA">📦 Rattachée au bon de commande <strong>${src.bcRef}</strong></div>`:""}
     <div class="field-row">
-      <div class="field"><label>Date facture</label><input type="date" id="ff-date" value="${src.date}"/></div>
-      <div class="field"><label>Échéance</label><input type="date" id="ff-ech" value="${src.ech}"/></div>
+      <div class="field"><label>Date de la facture</label><input type="date" id="ff-date" value="${src.date||""}"/></div>
+      <div class="field"><label>Échéance</label><input type="date" id="ff-ech" value="${src.ech||""}"/></div>
+    </div>
+    ${ancienne?`<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:9px;padding:9px 13px;margin-bottom:12px;font-size:12px;color:#92400e">Facture saisie avec l'ancienne méthode (${f.lignes.length} ligne(s)). Les montants ci-dessous en sont repris ; en enregistrant, ils remplaceront les lignes.</div>`:""}
+    <div class="field-row">
+      <div class="field"><label>Montant HT (€)</label><input type="text" inputmode="decimal" id="ff-ht" value="${ht===""?"":ht}" oninput="ffCalc('ht')" placeholder="0,00"/></div>
+      <div class="field"><label>Taux TVA</label>
+        <select id="ff-taux" onchange="ffCalc('taux')">${[...new Set([taux,8.5,2.1,0,20,10,5.5])].map(t=>`<option value="${t}"${t===taux?" selected":""}>${fTaux(t)}</option>`).join("")}</select></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>TVA (%)</label><input type="number" id="ff-tva" value="${ffTauxTVA(src)}" step="0.1" min="0"/></div>
-      <div class="field"><label>Statut</label><select id="ff-statut">${["brouillon","a_payer"].map(k=>`<option value="${k}"${src.statut===k?" selected":""}>${FF_STATUTS[k].lbl}</option>`).join("")}</select></div>
+      <div class="field"><label>TVA (€)</label><input type="text" inputmode="decimal" id="ff-tvaeur" value="${tvaEur===""?"":tvaEur}" oninput="ffCalc('tva')" placeholder="0,00"/></div>
+      <div class="field"><label>Total TTC (€)</label><input type="text" inputmode="decimal" id="ff-ttc" value="" oninput="ffCalc('ttc')" placeholder="0,00"/></div>
     </div>
-    <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${TH.txt}88;margin-bottom:8px">Lignes de la facture</label>
-    <div id="ff-lignes"></div>
-    <button onclick="ffAddLigne()" style="margin-top:8px;padding:8px 14px;border-radius:8px;border:1.5px dashed ${TH.c1};background:transparent;color:${TH.c1};cursor:pointer;font-size:12px;font-weight:700;font-family:'Inter',sans-serif">＋ Ajouter une ligne</button>
-    <div id="ff-total" style="margin-top:14px"></div>
-    <div class="field" style="margin-top:14px"><label>Notes</label><textarea id="ff-notes">${src.notes||""}</textarea></div>`,
-    `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
-     <button class="btn-save" style="background:${TH.c1}" onclick="saveFF('${id||""}','${bcId||""}')">Enregistrer</button>`
+    <div style="font-size:11px;color:${TH.txt}77;margin:-4px 0 12px">Saisissez le HT ou directement le TTC : le reste se calcule. La TVA reste modifiable pour coller au centime près à la facture.</div>
+    <div class="field"><label>Bon de commande lié (optionnel)</label>
+      <select id="ff-bc"><option value="">— Aucun —</option>${bcsFour.map(c=>`<option value="${c.id}"${src.bcId===c.id?" selected":""}>${ffEsc(c.ref)} · ${ffEsc(c.four||"")} · ${fMoney(bcTotal(c))}</option>`).join("")}</select></div>
+    ${!id?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:4px 0 8px;cursor:pointer"><input type="checkbox" id="ff-dejapaye" onchange="document.getElementById('ff-paye-box').style.display=this.checked?'flex':'none'" style="width:18px;height:18px"/> Déjà réglée (prélèvement, CB, payée sur place…)</label>
+    <div id="ff-paye-box" class="field-row" style="display:none">
+      <div class="field"><label>Date du règlement</label><input type="date" id="ff-paye-date" value="${getToday()}"/></div>
+      <div class="field"><label>Mode</label><select id="ff-paye-mode">${["Prélèvement","CB","Virement","Chèque","Espèces"].map(m=>`<option>${m}</option>`).join("")}</select></div>
+    </div>`:""}
+    <div class="field"><label>Notes</label><textarea id="ff-notes" placeholder="Ex : chantier concerné, remarque…">${ffEsc(src.notes||"")}</textarea></div>
+    <div style="font-size:11px;color:${TH.txt}66">N° interne : ${ffEsc(src.num)}</div>
+    <div id="ff-msg" style="display:none;margin-top:12px;padding:10px 12px;border-radius:9px;font-size:13px"></div>`,
+    `${id?`<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca" onclick="delFF('${id}')">🗑 Supprimer</button>`:""}
+     <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+     <button class="btn-save" id="ff-btn" style="background:${TH.c1}" onclick="saveFF('${id||""}','${bcId||""}')">📥 Enregistrer</button>`
   );
-  ffRenderLignes();
+  if(ht!=="") ffCalc("tva");
 }
-function ffRenderLignes(){
-  const box=document.getElementById("ff-lignes");if(!box)return;
-  box.innerHTML=ffDraftLignes.map((l,i)=>`
-    <div style="display:grid;grid-template-columns:1fr 70px 90px 40px;gap:6px;margin-bottom:7px;align-items:center">
-      <input value="${(l.desc||"").replace(/"/g,"&quot;")}" placeholder="Désignation" oninput="ffSetLigne(${i},'desc',this.value)" style="padding:9px 11px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:16px;font-family:'Inter',sans-serif;box-sizing:border-box;width:100%"/>
-      <input type="number" value="${l.qte}" min="0" step="1" oninput="ffSetLigne(${i},'qte',this.value)" style="padding:9px 8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:16px;text-align:center;font-family:'Inter',sans-serif;box-sizing:border-box;width:100%"/>
-      <input type="number" value="${l.pu}" min="0" step="0.01" oninput="ffSetLigne(${i},'pu',this.value)" style="padding:9px 8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:16px;text-align:right;font-family:'Inter',sans-serif;box-sizing:border-box;width:100%"/>
-      <button onclick="ffDelLigne(${i})" style="width:38px;height:38px;border-radius:8px;border:1.5px solid #fecaca;background:#fef2f2;color:#991b1b;cursor:pointer;font-size:14px;padding:0">🗑️</button>
-    </div>`).join("");
-  ffUpdTotal();
-}
-function ffUpdTotal(){
-  const box=document.getElementById("ff-total");if(!box)return;
-  const tva=Number(document.getElementById("ff-tva")?.value)||0;
-  const ht=ffDraftLignes.reduce((s,l)=>s+(Number(l.qte)||0)*(Number(l.pu)||0),0);
-  const ttc=ht*(1+tva/100);
-  box.innerHTML=`<div style="background:${TH.bg};border-radius:10px;padding:12px 15px">
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:${TH.txt}99">Total HT</span><span style="font-weight:700">${fMoney(ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:${TH.txt}99">TVA ${fTaux(tva)}</span><span style="font-weight:700">${fMoney(ttc-ht)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:6px;border-top:1px solid ${TH.txt}22"><span style="font-weight:700">Total TTC</span><span style="font-weight:800;color:${TH.c1}">${fMoney(ttc)}</span></div>
-  </div>`;
-}
-function ffSetLigne(i,k,v){ffDraftLignes[i][k]=(k==="qte"||k==="pu")?Number(v):v;ffUpdTotal();}
-function ffAddLigne(){ffDraftLignes.push({ref:"",desc:"",qte:1,pu:0});ffRenderLignes();}
-function ffDelLigne(i){ffDraftLignes.splice(i,1);if(ffDraftLignes.length===0)ffDraftLignes.push({ref:"",desc:"",qte:1,pu:0});ffRenderLignes();}
-function saveFF(id,bcId){
-  const num=document.getElementById("ff-num").value.trim();
-  if(!num){alert("Le n° interne est obligatoire.");return;}
-  const lignes=ffDraftLignes.filter(l=>(l.desc||l.ref)&&Number(l.qte)>0);
-  if(lignes.length===0){alert("Ajoutez au moins une ligne.");return;}
-  const tvaVal=document.getElementById("ff-tva").value;
-  const obj={
-    num,numFour:document.getElementById("ff-numfour").value.trim(),
-    four:document.getElementById("ff-four").value,
-    date:document.getElementById("ff-date").value,
-    ech:document.getElementById("ff-ech").value,
-    statut:document.getElementById("ff-statut").value,
-    tva:(tvaVal===""||tvaVal===null)?20:Number(tvaVal),
-    notes:document.getElementById("ff-notes").value,
-    lignes
-  };
-  let cible;
-  if(id){FACFOURN=FACFOURN.map(f=>f.id===id?(cible={...f,...obj}):f);}
-  else{
-    const bc=bcId?COMMANDES.find(c=>c.id===bcId):null;
-    cible={...obj,id:uid(),paiements:[],bcId:bc?bc.id:"",bcRef:bc?bc.ref:""};
-    FACFOURN.push(cible);
+function ffCalc(source){
+  const g=k=>document.getElementById(k);
+  const ht=g("ff-ht"),tv=g("ff-tvaeur"),ttc=g("ff-ttc"),tx=g("ff-taux");if(!ht||!tv||!ttc||!tx)return;
+  const taux=Number(tx.value)||0;
+  const fmt=n=>String(Math.round(n*100)/100).replace(".",",");
+  if(source==="ht"||source==="taux"){
+    if(ht.value.trim()===""&&source==="taux"&&ttc.value.trim()!==""){ source="ttc"; }
+    else{ const h=ffNum(ht.value); tv.value=fmt(h*taux/100); ttc.value=fmt(h+ffNum(tv.value)); return; }
   }
-  closeModal();
-  logActivity("Facture fournisseur",`${id?"Modifiée":"Créée"} : ${num} — ${obj.four}`);
-  majPrixAchatDepuisFF(cible);
+  if(source==="ttc"){ const t=ffNum(ttc.value); const h=Math.round(t/(1+taux/100)*100)/100; ht.value=fmt(h); tv.value=fmt(t-h); return; }
+  if(source==="tva"){ ttc.value=fmt(ffNum(ht.value)+ffNum(tv.value)); return; }
+}
+function ffCatChange(sel){
+  if(sel.value!=="__new") return;
+  const nom=(prompt("Nom de la nouvelle catégorie :")||"").trim();
+  if(!nom){ sel.value=""; return; }
+  const l=ffCats(); if(!l.includes(nom)){ const i=l.indexOf("Autre"); if(i>=0) l.splice(i,0,nom); else l.push(nom); TH.ffCats=l; }
+  const opt=document.createElement("option"); opt.value=nom; opt.textContent=nom;
+  sel.insertBefore(opt,sel.querySelector('option[value="__new"]')); sel.value=nom;
+}
+function ffMsg(t){const b=document.getElementById("ff-msg");if(!b)return;b.style.display="block";b.textContent=t;b.style.background="#fef2f2";b.style.color="#991b1b";b.style.border="1.5px solid #fca5a5";}
+async function saveFF(id,bcId){
+  const g=k=>document.getElementById(k);
+  const four=g("ff-four").value.trim();
+  if(!four){ffMsg("Indiquez le fournisseur.");return;}
+  const ht=ffNum(g("ff-ht").value), tvaEur=ffNum(g("ff-tvaeur").value);
+  if(ht+tvaEur<=0){ffMsg("Indiquez le montant de la facture.");return;}
+  const cat=g("ff-cat").value==="__new"?"":g("ff-cat").value;
+  if(!cat){ffMsg("Choisissez une catégorie.");return;}
+  const ancien=id?FACFOURN.find(x=>x.id===id):null;
+  const bcSel=g("ff-bc").value; const bc=bcSel?COMMANDES.find(c=>c.id===bcSel):null;
+  const obj={
+    numFour:g("ff-numfour").value.trim(), four, cat,
+    date:g("ff-date").value||getToday(), ech:g("ff-ech").value||"",
+    montantHT:ht, montantTVA:tvaEur, tva:Number(g("ff-taux").value)||0,
+    statut:"a_payer", bcId:bc?bc.id:"", bcRef:bc?bc.ref:"",
+    notes:g("ff-notes").value.trim(), lignes:[]
+  };
+  const fid=ancien?ancien.id:uid();
+  const fichier=g("ff-file").files[0];
+  if(fichier){
+    if(fichier.size>DOCS_MAX_MO*1048576){ffMsg(`Fichier trop lourd (${fTaille(fichier.size)}). Maximum ${DOCS_MAX_MO} Mo.`);return;}
+    if(!currentUser||!currentUser.tenant_id){ffMsg("Session invalide, reconnectez-vous.");return;}
+    const btn=g("ff-btn");if(btn){btn.disabled=true;btn.textContent="⟳ Envoi de la facture…";}
+    const ext=(fichier.name.split(".").pop()||"bin").toLowerCase().replace(/[^a-z0-9]/g,"");
+    const path=`${currentUser.tenant_id}/factures-fournisseurs/${fid}-${Date.now()}.${ext}`;
+    try{
+      const {error}=await sbClient.storage.from(DOCS_BUCKET).upload(path,fichier,{contentType:fichier.type||"application/octet-stream",upsert:false});
+      if(error) throw error;
+      if(ancien&&ancien.piece&&ancien.piece.path) sbClient.storage.from(DOCS_BUCKET).remove([ancien.piece.path]).catch(()=>{});
+      obj.piece={path,nom:fichier.name,type:fichier.type,taille:fichier.size};
+    }catch(e){
+      ffMsg("Envoi du fichier impossible : "+(e.message||e));
+      if(btn){btn.disabled=false;btn.textContent="📥 Enregistrer";}
+      return;
+    }
+  }
+  // fournisseur inconnu : on l'ajoute à la liste des fournisseurs
+  if(!FOURNISSEURS.some(x=>(x.nom||"").toLowerCase()===four.toLowerCase())){
+    FOURNISSEURS.push({id:uid(),nom:four,contact:"",tel:"",cat:cat,notes:"Ajouté depuis une facture reçue"});
+  }
+  if(ancien){ Object.assign(ancien,obj); }
+  else{
+    const nv={...obj,id:fid,num:nextFfRef(),recueLe:getToday(),paiements:[]};
+    if(g("ff-dejapaye")&&g("ff-dejapaye").checked){
+      nv.paiements.push({date:g("ff-paye-date").value||getToday(),montant:ffTTC(nv),mode:g("ff-paye-mode").value});
+    }
+    FACFOURN.push(nv);
+  }
+  logActivity("Facture fournisseur",`${ancien?"Modifiée":"Reçue"} : ${obj.numFour||""} — ${four} · ${fMoney(ht+tvaEur)} (${cat})`);
+  saveData();closeModal();renderPage();renderNav();
+}
+async function ffVoirPiece(id){
+  const f=FACFOURN.find(x=>x.id===id);if(!f||!f.piece)return;
+  const {data,error}=await sbClient.storage.from(DOCS_BUCKET).createSignedUrl(f.piece.path,3600);
+  if(error||!data){alert("Impossible d'ouvrir la facture : "+(error?error.message:"introuvable"));return;}
+  window.open(data.signedUrl,"_blank");
 }
 
 // Met à jour le prix d'achat des produits du stock d'après les lignes facturées
@@ -2711,7 +2791,9 @@ function bcVersFactureFournisseur(bcId){
 }
 function delFF(id){
   const f=FACFOURN.find(x=>x.id===id);
-  confirmDel(`Supprimer la facture ${f?f.num:""} ?`,function(){FACFOURN=FACFOURN.filter(x=>x.id!==id);saveData();renderPage();});
+  confirmDel(`Supprimer la facture ${f?(f.numFour||f.num):""} ?`,function(){
+    if(f&&f.piece&&f.piece.path) sbClient.storage.from(DOCS_BUCKET).remove([f.piece.path]).catch(()=>{});
+    FACFOURN=FACFOURN.filter(x=>x.id!==id);saveData();closeModal();renderPage();renderNav();});
 }
 
 // ── Règlements fournisseurs ───────────────────────────────
@@ -3729,47 +3811,71 @@ function rapproDefaire(txId){
 function renderFacFournSection(){
       const actives=FACFOURN.filter(f=>ffStatutReel(f)!=="payee");
       const archivees=FACFOURN.filter(f=>ffStatutReel(f)==="payee");
-      const liste=(ffFilter==="archives"?archivees:actives).slice().sort((a,b)=>(a.ech||"").localeCompare(b.ech||""));
+      const q=(ffRecherche||"").toLowerCase().trim();
+      const liste=(ffFilter==="archives"?archivees:ffFilter==="toutes"?FACFOURN:actives)
+        .filter(f=>!ffCatFiltre||(f.cat||"")===ffCatFiltre)
+        .filter(f=>!q||[f.four,f.numFour,f.num,f.cat,f.notes,f.bcRef].filter(Boolean).join(" ").toLowerCase().includes(q))
+        .slice().sort((a,b)=>ffFilter==="actives"?(a.ech||"9").localeCompare(b.ech||"9"):(b.date||"").localeCompare(a.date||""));
       const resteTotal=actives.reduce((s,f)=>s+ffReste(f),0);
       const enRetard=actives.filter(f=>ffStatutReel(f)==="retard");
       const sous30=actives.filter(f=>ffStatutReel(f)!=="retard"&&f.ech&&daysDiff(f.ech)<=30);
+      const sansFichier=FACFOURN.filter(f=>!f.piece).length;
+      // Dépenses de l'année par catégorie (HT)
+      const an=getToday().slice(0,4);
+      const parCat={};FACFOURN.filter(f=>(f.date||"").startsWith(an)).forEach(f=>{const c=f.cat||"Non classée";parCat[c]=(parCat[c]||0)+ffHT(f);});
+      const cats=Object.entries(parCat).sort((a,b)=>b[1]-a[1]);
+      const totAn=cats.reduce((s,x)=>s+x[1],0);
+      const catsDispo=[...new Set([...ffCats(),...FACFOURN.map(f=>f.cat).filter(Boolean)])];
+      const pill=(k,lbl)=>`<button onclick="ffFilter='${k}';renderPage()" style="padding:7px 13px;border-radius:999px;border:1.5px solid ${ffFilter===k?TH.c1:"#e2e8f0"};background:${ffFilter===k?TH.c1:"#fff"};color:${ffFilter===k?"#fff":"#64748b"};cursor:pointer;font-size:12px;font-weight:600;font-family:'Inter',sans-serif">${lbl}</button>`;
       return`
       <div class="section-card" style="background:${TH.card}">
         <div class="section-head">
-          <div><div class="section-title" style="color:${TH.txt}">Factures fournisseurs</div>
-          <div class="section-sub">${fMoney(resteTotal)} à payer${enRetard.length?` · ${enRetard.length} en retard`:""}</div></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${[["actives","À payer"],["archives","📁 Payées"+(archivees.length?" ("+archivees.length+")":"")]].map(([k,lbl])=>`
-              <button onclick="ffFilter='${k}';renderPage()" style="padding:7px 13px;border-radius:999px;border:1.5px solid ${ffFilter===k?TH.c1:"#e2e8f0"};background:${ffFilter===k?TH.c1:"#fff"};color:${ffFilter===k?"#fff":"#64748b"};cursor:pointer;font-size:12px;font-weight:600;font-family:'Inter',sans-serif">${lbl}</button>`).join("")}
-            <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalFF()">＋ Nouvelle facture</button>
-          </div>
+          <div><div class="section-title" style="color:${TH.txt}">Factures fournisseurs reçues</div>
+          <div class="section-sub">${fMoney(resteTotal)} à payer${enRetard.length?` · ${enRetard.length} en retard`:""}${sansFichier?` · ${sansFichier} sans fichier`:""}</div></div>
+          <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalFF()">📥 Réceptionner une facture</button>
         </div>
-        ${actives.length>0&&ffFilter!=="archives"?`
+        ${actives.length>0&&ffFilter==="actives"?`
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:0 18px 14px">
           <div style="background:#fef2f2;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#991b1b">En retard</div><div style="font-size:17px;font-weight:800;color:#991b1b">${fMoney(enRetard.reduce((s,f)=>s+ffReste(f),0))}</div></div>
           <div style="background:#fffbeb;border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#b45309">Sous 30 jours</div><div style="font-size:17px;font-weight:800;color:#b45309">${fMoney(sous30.reduce((s,f)=>s+ffReste(f),0))}</div></div>
           <div style="background:${TH.bg};border-radius:10px;padding:11px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${TH.txt}88">Total dû</div><div style="font-size:17px;font-weight:800;color:${TH.txt}">${fMoney(resteTotal)}</div></div>
         </div>`:""}
+        ${cats.length?`<details style="margin:0 18px 14px;background:${TH.bg};border-radius:10px;padding:10px 14px">
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:${TH.txt}">📊 Dépenses ${an} par catégorie · ${fMoney(totAn)} HT</summary>
+          <div style="margin-top:10px">${cats.map(([c,v])=>`<div onclick="ffCatFiltre=${JSON.stringify(c==="Non classée"?"":c).replace(/"/g,"&quot;")};ffFilter='toutes';renderPage()" style="cursor:pointer;margin-bottom:7px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:${TH.txt}">${ffEsc(c)}</span><span style="font-weight:700;color:${TH.txt}">${fMoney(v)}</span></div>
+            <div style="height:6px;background:#fff;border-radius:3px;overflow:hidden"><div style="height:100%;width:${totAn?Math.max(2,v/totAn*100):0}%;background:${TH.c1}"></div></div>
+          </div>`).join("")}</div>
+        </details>`:""}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 18px 12px">
+          ${pill("actives","À payer")}${pill("archives","📁 Payées"+(archivees.length?" ("+archivees.length+")":""))}${pill("toutes","Toutes")}
+          <select onchange="ffCatFiltre=this.value;renderPage()" style="padding:7px 10px;border-radius:999px;border:1.5px solid ${ffCatFiltre?TH.c1:"#e2e8f0"};font-size:12px;font-family:'Inter',sans-serif;background:#fff;max-width:200px">
+            <option value="">Toutes catégories</option>${catsDispo.map(c=>`<option value="${ffEsc(c)}"${ffCatFiltre===c?" selected":""}>${ffEsc(c)}</option>`).join("")}
+          </select>
+          <input id="ff-recherche" type="search" placeholder="🔍 Fournisseur, n°…" value="${ffEsc(ffRecherche)}" onchange="ffRecherche=this.value;renderPage()" style="padding:7px 12px;border-radius:999px;border:1.5px solid #e2e8f0;font-size:16px;font-family:'Inter',sans-serif;flex:1;min-width:140px;max-width:240px"/>
+        </div>
         <div style="overflow-x:auto">
           <table>
             <thead style="background:${TH.bg}"><tr>
-              <th style="color:${TH.txt}77">N°</th><th style="color:${TH.txt}77">Fournisseur</th><th style="color:${TH.txt}77">Bon</th>
-              <th style="color:${TH.txt}77">Échéance</th><th style="color:${TH.txt}77">Montant TTC</th><th style="color:${TH.txt}77">Reste dû</th>
+              <th style="color:${TH.txt}77">Fournisseur</th><th style="color:${TH.txt}77">N° facture</th><th style="color:${TH.txt}77">Catégorie</th>
+              <th style="color:${TH.txt}77">Date</th><th style="color:${TH.txt}77">Échéance</th><th style="color:${TH.txt}77">TTC</th><th style="color:${TH.txt}77">Reste dû</th>
               <th style="color:${TH.txt}77">Statut</th><th style="color:${TH.txt}77">Actions</th>
             </tr></thead>
-            <tbody>${liste.length===0?`<tr><td colspan="8" style="text-align:center;color:${TH.txt}55;padding:24px;font-size:13px">${ffFilter==="archives"?"Aucune facture payée":"Aucune facture fournisseur en attente."}</td></tr>`:liste.map(f=>{
+            <tbody>${liste.length===0?`<tr><td colspan="9" style="text-align:center;color:${TH.txt}55;padding:24px;font-size:13px">${q||ffCatFiltre?"Aucune facture ne correspond.":ffFilter==="archives"?"Aucune facture payée":"Aucune facture à payer. Cliquez sur « Réceptionner une facture » quand vous en recevez une."}</td></tr>`:liste.map(f=>{
               const sr=ffStatutReel(f),st=FF_STATUTS[sr]||FF_STATUTS.a_payer;
               const jours=f.ech?daysDiff(f.ech):null;
               return`<tr>
-                <td style="font-weight:700;color:${TH.c1};cursor:pointer;text-decoration:underline" onclick="modalFF('${f.id}')">${f.num}${f.numFour?`<div style="font-size:10px;font-weight:500;color:${TH.txt}77;text-decoration:none">${f.numFour}</div>`:""}</td>
-                <td style="color:${TH.txt}BB;font-size:12px">${f.four||"—"}</td>
-                <td style="color:${TH.txt}BB;font-size:12px">${f.bcRef||"—"}</td>
+                <td style="font-weight:700;color:${TH.c1};cursor:pointer;text-decoration:underline" onclick="modalFF('${f.id}')">${ffEsc(f.four||"—")}${f.bcRef?`<div style="font-size:10px;font-weight:500;color:${TH.txt}77;text-decoration:none">📦 ${ffEsc(f.bcRef)}</div>`:""}</td>
+                <td style="color:${TH.txt}BB;font-size:12px">${ffEsc(f.numFour||"—")}<div style="font-size:10px;color:${TH.txt}66">${ffEsc(f.num||"")}</div></td>
+                <td style="font-size:12px">${f.cat?badge(ffEsc(f.cat),TH.c1+"18",TH.c1):`<span style="color:#b45309;font-size:11px">À classer</span>`}</td>
+                <td style="color:${TH.txt}BB;font-size:12px">${f.date?fDate(f.date):"—"}</td>
                 <td style="color:${TH.txt}BB;font-size:12px">${f.ech?fDate(f.ech):"—"}${sr!=="payee"&&jours!==null?`<div style="font-size:10px;font-weight:700;color:${jours<0?"#991b1b":jours<=7?"#b45309":TH.txt+"77"}">${jours<0?`+${-jours} j de retard`:`dans ${jours} j`}</div>`:""}</td>
                 <td style="font-weight:700;color:${TH.txt}">${fMoney(ffTTC(f))}</td>
                 <td style="font-weight:700;color:${ffReste(f)>0?"#b45309":"#15803d"}">${fMoney(ffReste(f))}</td>
                 <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}</td>
                 <td style="white-space:nowrap">
-                  ${sr!=="payee"?`<button class="btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac" onclick="modalPaiementFF('${f.id}')" title="Enregistrer un règlement">💰</button>`:""}
+                  ${f.piece?`<button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe" onclick="ffVoirPiece('${f.id}')" title="Voir la facture">📎</button>`:`<button class="btn-sm" style="background:#fff;color:#94a3b8;border:1.5px dashed #cbd5e1" onclick="modalFF('${f.id}')" title="Ajouter le fichier">📎</button>`}
+                  ${sr!=="payee"?`<button class="btn-sm" style="margin-left:4px;background:#f0fdf4;color:#15803d;border:1.5px solid #86efac" onclick="modalPaiementFF('${f.id}')" title="Enregistrer un règlement">💰</button>`:""}
                   <button class="btn-sm btn-edit" style="margin-left:4px" onclick="modalFF('${f.id}')">✏️</button>
                   <button class="btn-sm btn-danger" style="margin-left:4px" onclick="delFF('${f.id}')">🗑️</button>
                 </td>
@@ -6908,8 +7014,8 @@ function doExportExcel(){
     }))),"Factures");
     // Stock
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(FACFOURN.map(f=>({
-      "N° interne":f.num,"N° fournisseur":f.numFour||"",Fournisseur:f.four||"",Bon:f.bcRef||"",
-      Date:f.date||"",Échéance:f.ech||"","Total TTC (€)":ffTTC(f),"Réglé (€)":ffPaye(f),"Reste dû (€)":ffReste(f),
+      "N° interne":f.num,"N° fournisseur":f.numFour||"",Fournisseur:f.four||"",Catégorie:f.cat||"",Bon:f.bcRef||"",
+      Date:f.date||"",Échéance:f.ech||"","HT (€)":ffHT(f),"TVA (€)":ffTVA(f),"Total TTC (€)":ffTTC(f),"Réglé (€)":ffPaye(f),"Reste dû (€)":ffReste(f),
       Statut:(FF_STATUTS[ffStatutReel(f)]||{}).lbl||""
     }))),"Factures fournisseurs");
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(STOCK.map(s=>({
