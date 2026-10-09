@@ -2793,6 +2793,7 @@ function delFF(id){
   const f=FACFOURN.find(x=>x.id===id);
   confirmDel(`Supprimer la facture ${f?(f.numFour||f.num):""} ?`,function(){
     if(f&&f.piece&&f.piece.path) sbClient.storage.from(DOCS_BUCKET).remove([f.piece.path]).catch(()=>{});
+    if(f) (f.paiements||[]).forEach(p=>{if(p.qontoId&&RAPPRO[p.qontoId])delete RAPPRO[p.qontoId];});
     FACFOURN=FACFOURN.filter(x=>x.id!==id);saveData();closeModal();renderPage();renderNav();});
 }
 
@@ -2810,7 +2811,7 @@ function modalPaiementFF(id){
     ${histo.length>0?`<div style="margin-bottom:16px">
       <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:${TH.txt}88;margin-bottom:7px">Historique</label>
       ${histo.map((p,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;margin-bottom:5px;font-size:12.5px">
-        <span>${fDate(p.date)} · ${p.mode||"—"}</span>
+        <span>${fDate(p.date)} · ${p.mode||"—"}${p.qontoId?` · <span style="color:#15803d;font-weight:700">🔗 banque</span>`:""}</span>
         <span style="display:flex;align-items:center;gap:8px"><strong>${fMoney(p.montant)}</strong>
         <button onclick="delPaiementFF('${id}',${i})" style="border:none;background:transparent;color:#991b1b;cursor:pointer;font-size:13px;padding:4px">🗑️</button></span>
       </div>`).join("")}
@@ -2835,6 +2836,11 @@ function addPaiementFF(id){
 }
 function delPaiementFF(id,i){
   const f=FACFOURN.find(x=>x.id===id);if(!f)return;
+  const p=f.paiements[i];
+  if(p&&p.qontoId){
+    if(!confirm("Ce règlement est rapproché d'une opération bancaire. Le supprimer remettra l'opération « à rapprocher ». Continuer ?"))return;
+    delete RAPPRO[p.qontoId];
+  }
   f.paiements.splice(i,1);saveData();modalPaiementFF(id);
 }
 // À la réception : proposer d'incrémenter le stock
@@ -3660,13 +3666,29 @@ function rpNorm(s){return String(s||"").toLowerCase().normalize("NFD").replace(/
 function rpCents(n){return Math.round((Number(n)||0)*100);}
 function rpDate(t){return String(t.date||"").slice(0,10)||getToday();}
 // Documents encore à régler, dans le sens de la transaction
+// Règlements saisis à la main (prélèvement, CB, virement…) pas encore pointés sur une opération bancaire
+function rpPaiementsLibres(doc,t){
+  const m=rpCents(t.montant);
+  return (doc.paiements||[]).map((p,idx)=>({idx,montant:Number(p.montant)||0,date:p.date||"",mode:p.mode||""}))
+    .filter((p,i)=>!(doc.paiements[i].qontoId)&&p.mode!=="Espèces"&&Math.abs(rpCents(p.montant)-m)<=1);
+}
 function rpCandidats(t){
   if(t.sens==="debit"){
-    return FACFOURN.filter(f=>f.statut!=="brouillon"&&ffReste(f)>0).map(f=>({type:"ff",id:f.id,ref:f.num,tiers:f.four||"",reste:ffReste(f),refs:[f.num,f.numFour].filter(Boolean),date:f.date||""}));
+    const L=[];
+    FACFOURN.filter(f=>f.statut!=="brouillon").forEach(f=>{
+      const base={type:"ff",id:f.id,ref:f.numFour||f.num,tiers:f.four||"",refs:[f.num,f.numFour].filter(Boolean),date:f.ech||f.date||""};
+      if(ffReste(f)>0) L.push({...base,reste:ffReste(f)});
+      rpPaiementsLibres(f,t).forEach(p=>L.push({...base,reste:p.montant,pointage:p.idx,info:`déjà réglée le ${fDate(p.date)} (${p.mode}) — à pointer`}));
+    });
+    return L;
   }
   const L=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut)&&facStatutReel(f)!=="payee"&&facReste(f)>0).map(f=>{
     const cli=CLIENTS.find(c=>c.id===f.clientId)||CLIENTS.find(c=>c.nom===f.client);
     return {type:"fac",id:f.id,ref:f.num,tiers:f.client||(cli&&cli.nom)||"",contact:cli&&cli.contact||"",reste:facReste(f),refs:[f.num],date:facDate(f)||""};});
+  FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut)).forEach(f=>{
+    const cli=CLIENTS.find(c=>c.id===f.clientId)||CLIENTS.find(c=>c.nom===f.client);
+    rpPaiementsLibres(f,t).forEach(p=>L.push({type:"fac",id:f.id,ref:f.num,tiers:f.client||(cli&&cli.nom)||"",contact:cli&&cli.contact||"",reste:p.montant,refs:[f.num],date:p.date||"",pointage:p.idx,info:`déjà encaissée le ${fDate(p.date)} (${p.mode}) — à pointer`}));
+  });
   BCCLIENTS.filter(b=>b.statut!=="facture"&&bccReste(b)>0).forEach(b=>{const cli=CLIENTS.find(c=>c.id===b.clientId);
     L.push({type:"bcc",id:b.id,ref:b.num,tiers:cli?cli.nom:"",contact:cli&&cli.contact||"",reste:bccReste(b),refs:[b.num,b.devisNum].filter(Boolean),date:b.date||""});});
   return L;
@@ -3681,7 +3703,9 @@ function rpSuggestions(t){
     else{const num=(d.ref.match(/(\d+)$/)||[])[1];if(num&&num.length>=3&&new RegExp("(^|\\D)0*"+Number(num)+"(\\D|$)").test(lib)&&d.ref.slice(0,3)&&lib.includes(rpNorm(d.ref.split("-")[0]))){s+=60;raisons.push("n°");}}
     if(rpCents(d.reste)===m){s+=60;raisons.push("montant");}
     const mots=[...rpNorm(d.tiers).split(" "),...rpNorm(d.contact).split(" ")].filter(w=>w.length>=4&&!["sarl","sas","eurl","maison","societe","entreprise"].includes(w));
-    if(mots.some(w=>lib.includes(w))){s+=40;raisons.push("nom");}
+    const nomColle=rpNorm(d.tiers).replace(/ /g,"");
+    if(mots.some(w=>lib.includes(w))||(nomColle.length>=4&&libC.includes(nomColle))){s+=40;raisons.push("nom");}
+    if(s>0&&d.date){const ecart=Math.abs((new Date(rpDate(t))-new Date(d.date))/864e5);if(ecart<=10){s+=20;raisons.push("date");}}
     return {...d,score:s,raisons};
   }).filter(d=>d.score>0).sort((a,b)=>b.score-a.score);
 }
@@ -3695,8 +3719,7 @@ function rpEtat(t){return RAPPRO[t.id]||null;}
 function renderRapprochement(transactions){
   const tx=transactions.filter(t=>t.id&&t.statut!=="refusée"&&dateEnCompta(String(t.date||"").slice(0,10)));
   const nonRap=tx.filter(t=>!rpEtat(t));
-  const credits=nonRap.filter(t=>t.sens!=="debit");
-  const sure=credits.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>o.s&&o.s.score>=100&&o.s.raisons.includes("montant")||o.s&&o.s.score>=160);
+  const sure=rpPlanSur(nonRap);
   const L=rapproFiltre==="arapprocher"?nonRap:rapproFiltre==="rapproches"?tx.filter(t=>rpEtat(t)&&rpEtat(t).type!=="ignore"):tx;
   const chip=(v,l,n)=>`<button onclick="rapproFiltre='${v}';document.getElementById('content').innerHTML=renderBanque()" style="padding:6px 12px;border-radius:999px;border:1.5px solid ${rapproFiltre===v?TH.c1:"#e2e8f0"};background:${rapproFiltre===v?TH.c1:"#fff"};color:${rapproFiltre===v?"#fff":"#475569"};cursor:pointer;font-size:12px;font-weight:700;font-family:'Inter',sans-serif">${l}${n!=null?` · ${n}`:""}</button>`;
   return `<div class="section-card">
@@ -3719,7 +3742,7 @@ function rpLigneHTML(t){
   let action;
   if(r&&r.type==="ignore") action=`<button class="btn-sm" onclick="rapproDefaire('${rpE(t.id)}')">Ignorée · annuler</button>`;
   else if(r) action=`<button class="btn-sm" style="border-color:#86efac;background:#f0fdf4;color:#15803d" onclick="rapproDetail('${rpE(t.id)}')">✓ ${rpE(r.ref)}</button>`;
-  else action=`${sug?`<button class="btn-sm" style="border-color:${TH.c1}55;background:${TH.c1}12;color:${TH.c1};font-weight:700" onclick="rapproAssocier('${rpE(t.id)}','${sug.type}','${sug.id}')" title="${rpE(sug.raisons.join(", "))}">${sug.score>=100?"⚡":"?"} ${rpE(sug.ref)}${sug.tiers?" · "+rpE(sug.tiers.slice(0,18)):""}</button>`:""}
+  else action=`${sug?`<button class="btn-sm" style="border-color:${TH.c1}55;background:${TH.c1}12;color:${TH.c1};font-weight:700" onclick="rapproAssocier('${rpE(t.id)}','${sug.type}','${sug.id}',false,${sug.pointage!=null?sug.pointage:"null"})" title="${rpE((sug.info?sug.info+" · ":"")+sug.raisons.join(", "))}">${sug.score>=100?"⚡":"?"} ${rpE(sug.ref)}${sug.tiers?" · "+rpE(sug.tiers.slice(0,18)):""}</button>`:""}
     <button class="btn-sm" onclick="rapproChoisir('${rpE(t.id)}')">${sug?"Autre…":"Associer…"}</button>`;
   return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
     <div style="min-width:0;flex:1 1 180px">
@@ -3732,7 +3755,7 @@ function rpLigneHTML(t){
 }
 function rpTrouverTx(id){return ((BANQUE_DATA&&BANQUE_DATA.transactions)||[]).find(t=>String(t.id)===String(id));}
 // Enregistre le règlement dans le document et note le rapprochement
-function rapproAssocier(txId,type,docId,silencieux){
+function rapproAssocier(txId,type,docId,silencieux,pointage){
   const t=rpTrouverTx(txId);if(!t)return false;
   if(RAPPRO[txId]&&RAPPRO[txId].type!=="ignore"){if(!silencieux)alert("Cette opération est déjà rapprochée.");return false;}
   const montant=Math.round(Number(t.montant)*100)/100,date=rpDate(t);
@@ -3741,7 +3764,16 @@ function rapproAssocier(txId,type,docId,silencieux){
   else if(type==="bcc"){doc=BCCLIENTS.find(x=>x.id===docId);reste=doc&&bccReste(doc);}
   else if(type==="ff"){doc=FACFOURN.find(x=>x.id===docId);reste=doc&&ffReste(doc);}
   if(!doc)return false;
-  ref=doc.num;
+  ref=type==="ff"?(doc.numFour||doc.num):doc.num;
+  // Facture déjà réglée à la main : on pointe le règlement existant au lieu d'en ajouter un
+  const pt=(pointage!==undefined&&pointage!==null&&pointage!=="")?Number(pointage):null;
+  if(pt!==null&&doc.paiements&&doc.paiements[pt]&&!doc.paiements[pt].qontoId){
+    doc.paiements[pt].qontoId=String(txId);doc.paiements[pt].pointe=true;
+    RAPPRO[txId]={type,id:docId,ref,ts:new Date().toISOString(),pointe:true};
+    logActivity("Rapprochement bancaire",`${fMoney(montant)} du ${fDate(date)} pointé sur ${ref}`);
+    if(!silencieux){saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();renderNav();}
+    return true;
+  }
   if(!silencieux&&rpCents(montant)>rpCents(reste)+1&&!confirm(`Le virement (${fMoney(montant)}) dépasse le reste dû sur ${ref} (${fMoney(reste)}).\nL'associer quand même ?`))return false;
   doc.paiements=doc.paiements||[];
   doc.paiements.push({date,montant,mode:type==="ff"?(t.categorie&&/card|carte/i.test(t.categorie)?"CB":"Virement"):"Virement",qontoId:String(txId)});
@@ -3751,14 +3783,20 @@ function rapproAssocier(txId,type,docId,silencieux){
   if(!silencieux){saveData();closeModal();document.getElementById("content").innerHTML=renderBanque();renderNav();}
   return true;
 }
+// Correspondances sûres (crédits clients et débits fournisseurs) : montant identique + référence ou nom
+function rpSur(s){ return !!s&&s.raisons.includes("montant")&&(s.raisons.includes("référence")||s.raisons.includes("n°")||s.raisons.includes("nom")); }
+function rpPlanSur(txs){
+  const pris=new Set();
+  return txs.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>rpSur(o.s)).filter(o=>{
+    // un document (ou un règlement à pointer) ne reçoit qu'une seule opération automatique
+    const k=o.s.type+o.s.id+(o.s.pointage!=null?"#"+o.s.pointage:"");if(pris.has(k))return false;pris.add(k);return true;});
+}
 function rapproAuto(){
-  const credits=((BANQUE_DATA&&BANQUE_DATA.transactions)||[]).filter(t=>t.id&&t.sens!=="debit"&&!rpEtat(t)&&t.statut!=="refusée");
-  const plan=credits.map(t=>({t,s:rpSuggestions(t)[0]})).filter(o=>o.s&&o.s.score>=100&&o.s.raisons.includes("montant")||o.s&&o.s.score>=160);
-  // un document ne reçoit qu'un seul virement automatique
-  const pris=new Set();const ok=plan.filter(o=>{const k=o.s.type+o.s.id;if(pris.has(k))return false;pris.add(k);return true;});
+  const txs=((BANQUE_DATA&&BANQUE_DATA.transactions)||[]).filter(t=>t.id&&!rpEtat(t)&&t.statut!=="refusée"&&dateEnCompta(String(t.date||"").slice(0,10)));
+  const ok=rpPlanSur(txs);
   if(!ok.length)return;
-  if(!confirm(`Valider ces ${ok.length} rapprochement(s) ?\n\n`+ok.map(o=>`• ${fMoney(o.t.montant)} « ${String(o.t.libelle).slice(0,40)} » → ${o.s.ref}`).join("\n")))return;
-  let n=0;ok.forEach(o=>{if(rapproAssocier(o.t.id,o.s.type,o.s.id,true))n++;});
+  if(!confirm(`Valider ces ${ok.length} rapprochement(s) ?\n\n`+ok.map(o=>`• ${o.t.sens==="debit"?"−":"+"}${fMoney(o.t.montant)} « ${String(o.t.libelle).slice(0,40)} » → ${o.s.ref}${o.s.type==="ff"?" ("+o.s.tiers+")":""}${o.s.pointage!=null?" [déjà réglée]":""}`).join("\n")))return;
+  let n=0;ok.forEach(o=>{if(rapproAssocier(o.t.id,o.s.type,o.s.id,true,o.s.pointage))n++;});
   saveData();document.getElementById("content").innerHTML=renderBanque();renderNav();
   alert(`✅ ${n} règlement(s) enregistré(s).`);
 }
@@ -3766,10 +3804,12 @@ function rapproChoisir(txId){
   const t=rpTrouverTx(txId);if(!t)return;
   const sugg=rpSuggestions(t);
   const tous=rpCandidats(t).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-  const ids=new Set(sugg.map(s=>s.type+s.id));
-  const ligne=d=>`<button onclick="rapproAssocier('${rpE(txId)}','${d.type}','${d.id}')" style="display:flex;width:100%;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:10px;border:1.5px solid ${d.score>=100?TH.c1+"66":"#e2e8f0"};background:#fff;cursor:pointer;text-align:left;font-family:'Inter',sans-serif">
+  const cle=d=>d.type+d.id+(d.pointage!=null?"#"+d.pointage:"");
+  const ids=new Set(sugg.map(cle));
+  const ligne=d=>`<button onclick="rapproAssocier('${rpE(txId)}','${d.type}','${d.id}',false,${d.pointage!=null?d.pointage:"null"})" style="display:flex;width:100%;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:10px;border:1.5px solid ${d.score>=100?TH.c1+"66":"#e2e8f0"};background:#fff;cursor:pointer;text-align:left;font-family:'Inter',sans-serif">
       <span style="font-size:16px">${d.type==="ff"?"📥":d.type==="bcc"?"📋":"🧾"}</span>
       <span style="flex:1;min-width:0"><span style="font-weight:700;font-size:13px;color:${TH.c1}">${rpE(d.ref)}</span> <span style="font-size:12.5px;color:#1A2118">${rpE(d.tiers)}</span>
+        ${d.info?`<br/><span style="font-size:11px;color:#b45309">${rpE(d.info)}</span>`:""}
         ${d.raisons&&d.raisons.length?`<br/><span style="font-size:11px;color:#15803d">Correspond : ${rpE(d.raisons.join(", "))}</span>`:""}</span>
       <span style="font-weight:700;font-size:13px;white-space:nowrap">reste ${fMoney(d.reste)}</span></button>`;
   showModal(`${t.sens==="debit"?"Débit":"Crédit"} de ${fMontantSigne(t)}`,`
@@ -3777,7 +3817,7 @@ function rapproChoisir(txId){
     ${sugg.length?`<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Suggestions</div>${sugg.slice(0,5).map(ligne).join("")}`:""}
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">${t.sens==="debit"?"Factures fournisseurs à payer":"Factures et acomptes clients à encaisser"}</div>
     <input placeholder="🔍 Filtrer…" oninput="const q=this.value.toLowerCase();document.querySelectorAll('#rp-liste>button').forEach(b=>b.style.display=b.textContent.toLowerCase().includes(q)?'flex':'none')" style="width:100%;padding:9px 12px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px;margin-bottom:8px;box-sizing:border-box"/>
-    <div id="rp-liste" style="max-height:40vh;overflow-y:auto">${tous.filter(d=>!ids.has(d.type+d.id)).map(d=>ligne({...d,raisons:[]})).join("")||`<div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px">Aucun document en attente de règlement.</div>`}</div>`,
+    <div id="rp-liste" style="max-height:40vh;overflow-y:auto">${tous.filter(d=>!ids.has(cle(d))).map(d=>ligne({...d,raisons:[]})).join("")||`<div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px">Aucun document en attente de règlement.</div>`}</div>`,
     `<button class="btn-cancel" style="margin-right:auto" onclick="rapproIgnorer('${rpE(txId)}')">Ignorer cette opération</button>
      <button class="btn-cancel" onclick="closeModal()">Fermer</button>`);
 }
@@ -3790,7 +3830,7 @@ function rapproDetail(txId){
   showModal("Opération rapprochée",`
     <div style="background:#F7F4ED;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px"><strong>${rpE(t.libelle)}</strong><br/><span style="color:#64748b">${fDateTrans(t.date)} · ${fMontantSigne(t)}</span></div>
     <div style="font-size:14px">Associée à <strong style="color:${TH.c1}">${rpE(r.ref)}</strong> le ${fDate((r.ts||"").slice(0,10))}.</div>
-    <div style="font-size:12px;color:#64748b;margin-top:6px">Dissocier supprime aussi le règlement enregistré sur ce document.</div>`,
+    <div style="font-size:12px;color:#64748b;margin-top:6px">${r.pointe?"Dissocier garde le règlement saisi à la main, il redevient simplement « non pointé ».":"Dissocier supprime aussi le règlement enregistré sur ce document."}</div>`,
     `<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca;margin-right:auto" onclick="rapproDefaire('${rpE(txId)}')">Dissocier</button>
      <button class="btn-cancel" onclick="closeModal()">Fermer</button>
      ${r.type==="fac"?`<button class="btn-save" style="background:${TH.c1}" onclick="modalPaiement('${r.id}')">Voir la facture</button>`:r.type==="ff"?`<button class="btn-save" style="background:${TH.c1}" onclick="modalPaiementFF('${r.id}')">Voir la facture</button>`:""}`);
@@ -3799,7 +3839,9 @@ function rapproDefaire(txId){
   const r=RAPPRO[txId];if(!r)return;
   if(r.type!=="ignore"){
     const doc=r.type==="fac"?FACTURES.find(x=>x.id===r.id):r.type==="bcc"?BCCLIENTS.find(x=>x.id===r.id):FACFOURN.find(x=>x.id===r.id);
-    if(doc&&doc.paiements){doc.paiements=doc.paiements.filter(p=>String(p.qontoId||"")!==String(txId));
+    if(doc&&doc.paiements){
+      doc.paiements.forEach(p=>{if(p.pointe&&String(p.qontoId||"")===String(txId)){delete p.qontoId;delete p.pointe;}});
+      doc.paiements=doc.paiements.filter(p=>String(p.qontoId||"")!==String(txId));
       if(r.type==="fac"&&!facEstPayee(doc)&&doc.statut==="payee")doc.statut=facPaye(doc)>0?"partiel":"envoyee";}
     logActivity("Rapprochement annulé",r.ref||"");
   }
@@ -3872,7 +3914,7 @@ function renderFacFournSection(){
                 <td style="color:${TH.txt}BB;font-size:12px">${f.ech?fDate(f.ech):"—"}${sr!=="payee"&&jours!==null?`<div style="font-size:10px;font-weight:700;color:${jours<0?"#991b1b":jours<=7?"#b45309":TH.txt+"77"}">${jours<0?`+${-jours} j de retard`:`dans ${jours} j`}</div>`:""}</td>
                 <td style="font-weight:700;color:${TH.txt}">${fMoney(ffTTC(f))}</td>
                 <td style="font-weight:700;color:${ffReste(f)>0?"#b45309":"#15803d"}">${fMoney(ffReste(f))}</td>
-                <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}</td>
+                <td>${badge(st.icon+" "+st.lbl,st.bg,st.col)}${(f.paiements||[]).some(p=>p.qontoId)?`<div style="font-size:10px;font-weight:700;color:#15803d;margin-top:3px">🔗 Rapprochée banque</div>`:(f.paiements||[]).length?`<div style="font-size:10px;color:#b45309;margin-top:3px">Non pointée en banque</div>`:""}</td>
                 <td style="white-space:nowrap">
                   ${f.piece?`<button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe" onclick="ffVoirPiece('${f.id}')" title="Voir la facture">📎</button>`:`<button class="btn-sm" style="background:#fff;color:#94a3b8;border:1.5px dashed #cbd5e1" onclick="modalFF('${f.id}')" title="Ajouter le fichier">📎</button>`}
                   ${sr!=="payee"?`<button class="btn-sm" style="margin-left:4px;background:#f0fdf4;color:#15803d;border:1.5px solid #86efac" onclick="modalPaiementFF('${f.id}')" title="Enregistrer un règlement">💰</button>`:""}
