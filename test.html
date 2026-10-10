@@ -911,6 +911,7 @@ async function doLogin(){
   logActivity("Connexion","Connexion réussie");
   document.getElementById("login-screen").style.display="none";
   document.getElementById("app-screen").style.display="flex";
+  loadData();appliquerMetier();   // uniquement la copie locale de cette entreprise
   applyTheme();
   initSidebar();
   loadWidgets();   // disposition du tableau de bord propre à cet utilisateur
@@ -920,7 +921,11 @@ async function doLogin(){
 }
 async function doLogout(){
   logActivity("Déconnexion","");
+  saveDataLocal();
+  if(syncTimer){ clearTimeout(syncTimer); syncTimer=null; }
+  CLOUD_OK=false; CLOUD_TENANT=null;
   await sbClient.auth.signOut();
+  viderDonnees();
   isLoggedIn=false;currentUser=null;CURRENT_TENANT=null;DBWIDGETS=[];dbEditMode=false;
   sessionStorage.removeItem("gp_user");
   document.getElementById("app-screen").style.display="none";
@@ -1308,10 +1313,13 @@ let CURRENT_TENANT=null; // {id, nom, plan, statut_abonnement, theme, ...}
 let syncStatus="idle"; // idle | syncing | ok | error | offline
 let syncTimer=null;
 
-const STORAGE_KEY=AD_TEST?"adsecure_data_test_v1":"adsecure_data_v1";
+const STORAGE_KEY=AD_TEST?"adsecure_data_test_v1":"adsecure_data_v1"; // ancienne clé commune (purgée au démarrage)
+// Copie locale propre à chaque entreprise : jamais partagée entre deux comptes sur le même appareil
+function cleLocale(){ return (currentUser&&currentUser.tenant_id)?STORAGE_KEY+"_"+currentUser.tenant_id:null; }
 function saveDataLocal(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({...getDataObject()}));
+    const k=cleLocale(); if(!k) return;
+    localStorage.setItem(k, JSON.stringify({...getDataObject()}));
   }catch(e){ console.warn("Sauvegarde locale impossible:", e); }
 }
 
@@ -1331,6 +1339,8 @@ function getDataObject(){
 }
 function applyDataObject(d){
   if(!d) return;
+  // Les données reçues REMPLACENT tout : rien de l'entreprise précédente ne doit subsister
+  viderDonnees();
   if(d.CLIENTS) CLIENTS=d.CLIENTS;
   if(d.EVENTS) EVENTS=d.EVENTS;
   if(d.STOCK) STOCK=d.STOCK;
@@ -1374,8 +1384,12 @@ function setSyncBadge(status){
 }
 
 // Envoyer les données vers Supabase (scopé au tenant courant, protégé par RLS)
+// Vrai seulement quand les données de l'entreprise connectée ont bien été lues en ligne :
+// tant que ce n'est pas le cas, on n'envoie rien (évite d'écraser les données en ligne avec une mémoire vide)
+let CLOUD_OK=false, CLOUD_TENANT=null;
 async function syncPush(){
   if(!currentUser || !currentUser.tenant_id){ setSyncBadge("error"); return false; }
+  if(!CLOUD_OK || CLOUD_TENANT!==currentUser.tenant_id){ setSyncBadge("error"); return false; }
   setSyncBadge("syncing");
   try{
     const {data:upd,error}=await sbClient.from(DATA_TABLE)
@@ -1409,6 +1423,8 @@ async function syncInsert(){
 // Récupérer les données depuis Supabase (scopé au tenant courant)
 async function syncPull(){
   if(!currentUser || !currentUser.tenant_id){ setSyncBadge("error"); return false; }
+  CLOUD_OK=false; CLOUD_TENANT=null;
+  const tenantVise=currentUser.tenant_id;
   setSyncBadge("syncing");
   try{
     const {data:rows,error}=await sbClient.from(DATA_TABLE)
@@ -1416,16 +1432,19 @@ async function syncPull(){
       .eq("tenant_id",currentUser.tenant_id)
       .maybeSingle();
     if(error){setSyncBadge("error");return false;}
+    if(!currentUser || currentUser.tenant_id!==tenantVise) return false; // changement de compte entre-temps
     if(rows && rows.data){
       applyDataObject(rows.data);
+      CLOUD_OK=true; CLOUD_TENANT=tenantVise;
       await syncRelancesLog();
       saveDataLocal();
       setSyncBadge("ok");
       return true;
     }
-    // Version de test vide → on part d'une copie des vraies données
-    if(AD_TEST && await copierVraiesDonneesVersTest(false)){ setSyncBadge("ok"); return true; }
-    // Aucune donnée en ligne → on pousse les données locales
+    // Version de test vide → on part d'une copie des vraies données de CETTE entreprise
+    if(AD_TEST && await copierVraiesDonneesVersTest(false)){ CLOUD_OK=true; CLOUD_TENANT=tenantVise; setSyncBadge("ok"); return true; }
+    // Aucune donnée en ligne → on crée la ligne de cette entreprise avec ses données locales
+    CLOUD_OK=true; CLOUD_TENANT=tenantVise;
     await syncInsert();
     setSyncBadge("ok");
     return true;
@@ -1551,7 +1570,9 @@ function saveData(){
 
 function loadData(){
   try{
-    const raw=localStorage.getItem(STORAGE_KEY);
+    viderDonnees();
+    const k=cleLocale(); if(!k) return;
+    const raw=localStorage.getItem(k);
     if(!raw) return;
     const d=JSON.parse(raw);
     if(d.CLIENTS) CLIENTS=d.CLIENTS;
@@ -1583,7 +1604,7 @@ function loadData(){
 
 function resetData(){
   if(!confirm("Réinitialiser toutes les données ? Cette action est irréversible.")) return;
-  localStorage.removeItem(STORAGE_KEY);
+  const k=cleLocale(); if(k) localStorage.removeItem(k);
   location.reload();
 }
 
@@ -10434,8 +10455,17 @@ window.addEventListener("resize",function(){
   resizeTimer=setTimeout(applyLayout,150);
 });
 
-// Charger les données locales avant tout rendu
-loadData();
+// Aucune donnée en mémoire tant qu'on ne sait pas quelle entreprise est connectée
+const DEF_LISTES={CAT_STOCK:JSON.stringify(CAT_STOCK),CAT_PRODUITS:JSON.stringify(CAT_PRODUITS),UNITES:JSON.stringify(UNITES)};
+function viderDonnees(){
+  CLIENTS=[];EVENTS=[];STOCK=[];COMMANDES=[];FACTURES=[];FACFOURN=[];TACHES=[];PROSPECTS=[];DEVIS=[];BCCLIENTS=[];
+  DOCSHIST=[];CATALOGUE=[];TRANSMISSIONS=[];JOURNAL=[];INTERVENTIONS=[];RAPPRO={};FOURNISSEURS=[];
+  CAISSE={mouvements:[],comptages:[]};pipeNextId=10;BANQUE_DATA=null;
+  CAT_STOCK=JSON.parse(DEF_LISTES.CAT_STOCK);CAT_PRODUITS=JSON.parse(DEF_LISTES.CAT_PRODUITS);UNITES=JSON.parse(DEF_LISTES.UNITES);
+  TH=mergeTH({});RUBS=mergeRubs([]);
+}
+viderDonnees();
+try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}   // ancienne copie commune à tous les comptes
 appliquerMetier();
 
 // Vérifier la session Supabase Auth, puis synchroniser (scopé au tenant) avant d'afficher
@@ -10463,7 +10493,8 @@ async function bootApp(){
     }
     document.getElementById("login-screen").style.display="none";
     document.getElementById("app-screen").style.display="flex";
-    // Récupérer les données du cloud (scopées au tenant courant)
+    // Copie locale de CETTE entreprise (hors ligne), puis données du cloud (scopées au tenant courant)
+    loadData();appliquerMetier();
     await syncPull();
     applyTheme();
     initSidebar();
