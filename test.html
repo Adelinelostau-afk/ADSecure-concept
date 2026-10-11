@@ -7778,6 +7778,32 @@ const METIERS={
 };
 const METIER_ORDRE=["securite","electricite","plomberie","batiment","services","generique"];
 
+// Vocabulaire de la fiche client, des rapports et du contrat selon le métier.
+// Les valeurs par défaut sont celles d'AD Secure (sécurité) : ne pas les modifier.
+const FICHE_DEF={
+  parc:"Parc installé",parcIcone:"📦",parcSub:"équipement(s) en place",parcUnite:"Équipement",
+  parcVide:"Aucun équipement enregistré.<br/>Ajoutez-les un par un ou importez-les depuis une facture.",
+  importFacture:true,remise:true,remiseLbl:"Dossier de remise",
+  interventions:"Interventions",riSection:"Rapports d'intervention",riBtn:"Rapport d'intervention",riVide:"Aucune intervention enregistrée.",
+  contrat:"Contrat de maintenance",riUnite:"rapport(s)",
+  riTypes:{maintenance:"Maintenance préventive",installation:"Installation / mise en service",depannage:"Dépannage / SAV",audit:"Visite technique / audit"}
+};
+const FICHE_METIER={
+  plomberie:{contrat:"Contrat d'entretien",
+    riTypes:{maintenance:"Entretien annuel",installation:"Installation / mise en service",depannage:"Dépannage / SAV",audit:"Visite technique / devis"}},
+  batiment:{parc:"Ouvrages réalisés",parcIcone:"🧱",parcSub:"ouvrage(s) réalisé(s)",parcUnite:"Ouvrage",
+    parcVide:"Aucun ouvrage enregistré.<br/>Ajoutez-les un par un ou importez-les depuis une facture.",
+    remiseLbl:"Dossier de fin de chantier",contrat:"Contrat d'entretien",
+    riSection:"Rapports de chantier",riBtn:"Rapport de chantier",
+    riTypes:{maintenance:"Entretien",installation:"Chantier / réception des travaux",depannage:"Reprise / SAV",audit:"Visite / métré"}},
+  services:{parc:"Équipements suivis",parcIcone:"🧰",parcSub:"équipement(s) suivi(s)",parcUnite:"Équipement",
+    parcVide:"Aucun équipement suivi.<br/>Ajoutez ceux que vous entretenez chez ce client (piscine, pompe, arrosage, matériel confié…).",
+    importFacture:false,remise:false,contrat:"Contrat d'entretien",
+    interventions:"Passages",riUnite:"passage(s)",riSection:"Comptes rendus de passage",riBtn:"Compte rendu de passage",riVide:"Aucun passage enregistré.",
+    riTypes:{maintenance:"Passage d'entretien",installation:"Mise en place / premier passage",depannage:"Intervention ponctuelle",audit:"Visite / estimation"}}
+};
+function FV(k){ const f=FICHE_METIER[metierId()]||{}; return f[k]!==undefined?f[k]:FICHE_DEF[k]; }
+
 // Profil actif = profil du métier + personnalisations de l'abonné
 function metierId(){ return METIERS[TH&&TH.metier]?TH.metier:"generique"; }
 function MP(){
@@ -7802,6 +7828,7 @@ function appliquerMetier(){
     PARC_CAT_TYPE=Object.assign({},p.catVersType);
     Object.keys(RI_CHECK).forEach(k=>delete RI_CHECK[k]);
     Object.assign(RI_CHECK,JSON.parse(JSON.stringify(p.check)));
+    if(typeof RI_TYPES!=="undefined") Object.assign(RI_TYPES,FV("riTypes"));
     // Lu par le serveur pour les e-mails de relance (reconduction, rappel de visite)
     TH.systemeLibelle=p.systeme;
     TH.accesMateriel=p.accesMateriel;
@@ -7915,16 +7942,16 @@ function renderParcSection(c){
     </div>`;};
   return `<div class="section-card" style="background:${TH.card}">
     <div class="section-head">
-      <div><div class="section-title" style="color:${TH.txt}">📦 Parc installé</div><div class="section-sub">${actifs.length} équipement(s) en place${sousGarantie?" · "+sousGarantie+" sous garantie":""}</div></div>
+      <div><div class="section-title" style="color:${TH.txt}">${FV("parcIcone")} ${FV("parc")}</div><div class="section-sub">${actifs.length} ${FV("parcSub")}${sousGarantie?" · "+sousGarantie+" sous garantie":""}</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${parc.length?`<button class="btn-sm" onclick="imprimerParc('${c.id}')">📄 Fiche PDF</button>`:""}
-        <button class="btn-sm" onclick="modalDossierRemise('${c.id}')" style="border-color:${TH.c1}55;color:${TH.c1};font-weight:700">📘 Dossier de remise</button>
-        <button class="btn-sm" onclick="modalImportParc('${c.id}')">⬇️ Depuis une facture</button>
-        <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalParc('${c.id}','')">＋ Équipement</button>
+        ${FV("remise")?`<button class="btn-sm" onclick="modalDossierRemise('${c.id}')" style="border-color:${TH.c1}55;color:${TH.c1};font-weight:700">📘 ${FV("remiseLbl")}</button>`:""}
+        ${FV("importFacture")?`<button class="btn-sm" onclick="modalImportParc('${c.id}')">⬇️ Depuis une facture</button>`:""}
+        <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalParc('${c.id}','')">＋ ${FV("parcUnite")}</button>
       </div>
     </div>
     ${resume?`<div style="padding:10px 18px;font-size:12px;color:#475569;border-bottom:1px solid #f1f5f9">${resume}</div>`:""}
-    ${parc.length===0?`<div style="padding:26px;text-align:center;color:${TH.txt}66;font-size:13px">Aucun équipement enregistré.<br/>Ajoutez-les un par un ou importez-les depuis une facture.</div>`:""}
+    ${parc.length===0?`<div style="padding:26px;text-align:center;color:${TH.txt}66;font-size:13px">${FV("parcVide")}</div>`:""}
     ${PARC_TYPES.filter(t=>parType[t]).map(t=>parType[t].map(ligne).join("")).join("")}
     ${anciens.length?`<details style="padding:6px 18px 10px"><summary style="cursor:pointer;font-size:12px;color:#64748b;padding:6px 0">${anciens.length} équipement(s) remplacé(s) ou retiré(s)</summary>${anciens.map(ligne).join("")}</details>`:""}
   </div>`;
@@ -8050,7 +8077,7 @@ const RI_CSS=`body{font-family:'Inter',Arial,sans-serif;color:#1A2118;padding:34
 function imprimerParc(clientId){
   const c=CLIENTS.find(x=>x.id===clientId);if(!c)return;
   const L=(c.parc||[]).slice().sort((a,b)=>PARC_TYPES.indexOf(a.type)-PARC_TYPES.indexOf(b.type));
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Parc installé — ${pE(c.nom)}</title><style>${RI_CSS}</style></head><body>
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${pE(FV("parc"))} — ${pE(c.nom)}</title><style>${RI_CSS}</style></head><body>
     ${riEnteteHTML("FICHE PARC INSTALLÉ",`${pE(c.nom)}<br/>au ${fDate(getToday())} ${getToday().slice(0,4)}`)}
     <div style="margin-bottom:14px"><strong>${pE(c.nom)}</strong>${c.contact?" — "+pE(c.contact):""}${c.adresse?"<br/>"+pE(c.adresse):""}${c.tel?"<br/>"+pE(c.tel):""}</div>
     <table><thead><tr><th>Type</th><th>Marque / modèle</th><th>N° de série</th><th>Emplacement</th><th>IP</th><th>Installé le</th><th>Garantie</th><th>État</th></tr></thead><tbody>
@@ -8066,7 +8093,7 @@ function imprimerParc(clientId){
 // ── RAPPORTS D'INTERVENTION ───────────────────────────────
 // ══════════════════════════════════════════════════════════
 let riFiltre={statut:"tous",type:"tous",q:""};
-const RI_TYPES={maintenance:"Maintenance préventive",installation:"Installation / mise en service",depannage:"Dépannage / SAV",audit:"Visite technique / audit"};
+const RI_TYPES=Object.assign({},FICHE_DEF.riTypes); // recalculé par appliquerMetier()
 const RI_CHECK={
   maintenance:["Nettoyage des optiques et des dômes","Contrôle de l'image jour et nuit (infrarouge)","Vérification de l'enregistrement et de la durée de conservation","Contrôle de l'état du disque dur","Mise à l'heure et mise à jour des firmwares","Test de l'accès à distance (application)","Test des détections et alertes (IA)","Contrôle des alimentations et de l'onduleur","Vérification des câbles et connectiques","Contrôle des panneaux d'information (RGPD)"],
   installation:["Pose et fixation des équipements","Raccordement et tests réseau","Paramétrage de l'enregistreur","Réglage des angles de vue et zones de détection","Configuration de l'accès à distance","Création des comptes utilisateurs","Formation du client à l'utilisation","Remise des identifiants et de la documentation","Pose des panneaux d'information (RGPD)"],
@@ -8100,7 +8127,7 @@ function renderInterventions(){
         <button class="btn-add" style="background:${TH.c1};color:#fff;font-size:12px;padding:6px 12px" onclick="nouveauRIDepuisEvent('${e.id}')">🛠️ Faire le rapport</button></div>`).join("")}</div>`:""}
     <div class="section-card">
       <div class="section-head">
-        <div><div class="section-title">🛠️ Rapports d'intervention</div><div class="section-sub">${L.length} rapport(s)</div></div>
+        <div><div class="section-title">🛠️ ${FV("riSection")}</div><div class="section-sub">${L.length} ${FV("riUnite")}</div></div>
         <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="choisirClientRI()">＋ Nouveau rapport</button>
       </div>
       <div style="padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line)">
@@ -8130,10 +8157,10 @@ function renderRIClientSection(c){
   const L=INTERVENTIONS.filter(r=>r.clientId===c.id).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   return `<div class="section-card" style="background:${TH.card}">
     <div class="section-head">
-      <div><div class="section-title" style="color:${TH.txt}">🛠️ Interventions</div><div class="section-sub">${L.length} rapport(s)${L[0]?" · dernière le "+fDate(L[0].date)+" "+(L[0].date||"").slice(0,4):""}</div></div>
-      <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="nouveauRI('${c.id}')">＋ Rapport d'intervention</button>
+      <div><div class="section-title" style="color:${TH.txt}">🛠️ ${FV("interventions")}</div><div class="section-sub">${L.length} ${FV("riUnite")}${L[0]?" · dernière le "+fDate(L[0].date)+" "+(L[0].date||"").slice(0,4):""}</div></div>
+      <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="nouveauRI('${c.id}')">＋ ${FV("riBtn")}</button>
     </div>
-    ${L.length?L.slice(0,8).map(riLigneHTML).join(""):`<div style="padding:24px;text-align:center;color:${TH.txt}66;font-size:13px">Aucune intervention enregistrée.</div>`}
+    ${L.length?L.slice(0,8).map(riLigneHTML).join(""):`<div style="padding:24px;text-align:center;color:${TH.txt}66;font-size:13px">${FV("riVide")}</div>`}
     ${L.length>8?`<div style="padding:10px;text-align:center"><button class="btn-sm" onclick="riFiltre.q='${pE(c.nom).replace(/'/g,"\\'")}';goTo('interventions')">Voir les ${L.length} rapports</button></div>`:""}
   </div>`;
 }
@@ -8232,7 +8259,7 @@ function riToutOK(){window._ri.checklist.forEach(x=>{if(x.ok===null)x.ok=true;})
 function riAjouterCheck(){const i=document.getElementById("ri-newcheck");const t=i.value.trim();if(!t)return;window._ri.checklist.push({lib:t,ok:null});i.value="";document.getElementById("ri-check").innerHTML=riCheckHTML();}
 function riEqHTML(){
   const r=window._ri,c=riClient(r);
-  if(!r.equipements.length) return `<div style="font-size:12px;color:#94a3b8;padding:6px 0">Aucun équipement dans le parc de ce client. Ajoutez-les depuis sa fiche (📦 Parc installé).</div>`;
+  if(!r.equipements.length) return `<div style="font-size:12px;color:#94a3b8;padding:6px 0">Aucun équipement dans le parc de ce client. Ajoutez-les depuis sa fiche (${FV("parcIcone")} ${FV("parc")}).</div>`;
   return r.equipements.map((e,i)=>{const x=c&&(c.parc||[]).find(p=>p.id===e.parcId);if(!x)return "";
     return `<div style="padding:7px 0;border-bottom:1px solid #f1f5f9">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -8721,7 +8748,7 @@ function renderClientFiche(){
           <button onclick="modalRelance('${c.id}')" style="padding:11px 16px;border-radius:9px;border:1.5px solid ${TH.c1}22;background:${TH.c1}10;color:${TH.c1};cursor:pointer;font-size:13px;font-weight:600;font-family:'Lora',Georgia,serif;text-align:left;display:flex;align-items:center;gap:8px">✉️ Envoyer une relance</button>
           <button onclick="modalDevis('',selectedClientId)" style="padding:11px 16px;border-radius:9px;border:1.5px solid #15803d22;background:#15803d10;color:#15803d;cursor:pointer;font-size:13px;font-weight:600;font-family:'Lora',Georgia,serif;text-align:left;display:flex;align-items:center;gap:8px">📋 Nouveau devis</button>
           <button onclick="modalEvent('',null,'${c.nom}')" style="padding:11px 16px;border-radius:9px;border:1.5px solid #b0890722;background:#b0890710;color:#b08d57;cursor:pointer;font-size:13px;font-weight:600;font-family:'Lora',Georgia,serif;text-align:left;display:flex;align-items:center;gap:8px">📅 Planifier un RDV</button>
-          <button onclick="modalContrat('${c.id}')" style="padding:11px 16px;border-radius:9px;border:1.5px solid #6d28d922;background:#6d28d910;color:#6d28d9;cursor:pointer;font-size:13px;font-weight:600;font-family:'Lora',Georgia,serif;text-align:left;display:flex;align-items:center;gap:8px">📄 Contrat de maintenance</button>
+          <button onclick="modalContrat('${c.id}')" style="padding:11px 16px;border-radius:9px;border:1.5px solid #6d28d922;background:#6d28d910;color:#6d28d9;cursor:pointer;font-size:13px;font-weight:600;font-family:'Lora',Georgia,serif;text-align:left;display:flex;align-items:center;gap:8px">📄 ${FV("contrat")}</button>
         </div>
       </div>
     </div>
@@ -8947,7 +8974,7 @@ function planifierVisitesContrat(c,x,depuis){
     if(depuis&&d<depuis) continue;
     if(EVENTS.some(e=>e.contratId===x.id&&e.visiteNum===k)) continue;
     EVENTS.push({id:uid(),type:"maintenance",titre:`Visite préventive ${k}/${CONTRAT_NB_VISITES}`,client:c.nom,date:d,heure:"09:00",
-      notes:`Contrat de maintenance${x.forfaitLabel?" "+x.forfaitLabel:""}${c.adresse?" — "+c.adresse:""}`,contratId:x.id,clientId:c.id,visiteNum:k});
+      notes:`${FV("contrat")}${x.forfaitLabel?" "+x.forfaitLabel:""}${c.adresse?" — "+c.adresse:""}`,contratId:x.id,clientId:c.id,visiteNum:k});
     n++;
   }
   return n;
@@ -9427,7 +9454,7 @@ function modalContrat(clientId){
   const maxC=contratMaxCameras();
   const surDevis=maxC&&c.nbCameras>maxC;
   const versionAuto=c.cat==="Pro"?"pro":"part";
-  showModal(`Contrat de maintenance — ${c.nom}`,`
+  showModal(`${FV("contrat")} — ${c.nom}`,`
     ${!c.nbCameras?`<div style="background:#fffbeb;border:1.5px solid #fcd34d;color:#92400e;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">Nombre de ${MP().unite[1]} non renseigné sur la fiche client — choisissez le forfait manuellement, ou <button style="border:none;background:none;color:#6d28d9;text-decoration:underline;cursor:pointer;font:inherit;padding:0" onclick="closeModal();modalClient('${c.id}')">complétez la fiche</button>.</div>`:""}
     ${surDevis?`<div style="background:#eff6ff;border:1.5px solid #93c5fd;color:#1e40af;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">${c.nbCameras} ${MP().unite[1]} : au-delà de ${maxC}, tarif sur devis — indiquez la mensualité personnalisée ci-dessous.</div>`:""}
     <div class="field"><label>Version du contrat</label>
@@ -9481,7 +9508,7 @@ function genererContratPDF(clientId){
   if(!opts.forfaitId){alert("Choisissez un forfait.");return;}
   const m=buildContratModel(clientId,opts);
   const articles=CONTRAT_TEXTE(m);
-  const doc=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Contrat de maintenance — ${ctrEsc(m.clientNom)}</title>
+  const doc=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>${ctrEsc(FV("contrat"))} — ${ctrEsc(m.clientNom)}</title>
   <style>
     @page{size:A4;margin:0}
     *{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -9509,7 +9536,7 @@ function genererContratPDF(clientId){
     .sign-box{flex:1}
     @media print{body{padding:30px 36px}}
   </style></head><body>
-    <h1 class="title">CONTRAT DE MAINTENANCE</h1>
+    <h1 class="title">${ctrEsc(FV("contrat").toUpperCase())}</h1>
     <div class="sub">${ctrEsc(MP().contratSous)}</div>
     <div class="duree">Durée : 60 mois · ${m.part?"Client particulier":"Client professionnel"}</div>
 
@@ -9607,13 +9634,13 @@ function buildContratDocx(m){
       properties:{page:{size:{width:11906,height:16838},margin:{top:1000,bottom:1000,left:1100,right:1100}}},
       headers:{default:new Header({children:[new Paragraph({alignment:AlignmentType.RIGHT,border:{bottom:{style:BorderStyle.SINGLE,size:6,color:BLUE,space:4}},children:[new TextRun({text:"AD SECURE CONCEPT",bold:true,color:BLUE,size:20})]})]})},
       footers:{default:new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[
-        new TextRun({text:`Contrat de maintenance – ${(TH.nom+" "+(TH.sous||"")).trim()}   |   Page `,size:16,color:"888888"}),
+        new TextRun({text:`${FV("contrat")} – ${(TH.nom+" "+(TH.sous||"")).trim()}   |   Page `,size:16,color:"888888"}),
         new TextRun({children:[PageNumber.CURRENT],size:16,color:"888888"}),
         new TextRun({text:" / ",size:16,color:"888888"}),
         new TextRun({children:[PageNumber.TOTAL_PAGES],size:16,color:"888888"}),
       ]})]})},
       children:[
-        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:"CONTRAT DE MAINTENANCE",bold:true,size:40,color:NAVY})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:FV("contrat").toUpperCase(),bold:true,size:40,color:NAVY})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:100},children:[new TextRun({text:MP().contratSous,size:26,color:BLUE})]}),
         new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:300},children:[new TextRun({text:`Durée : 60 mois · ${m.part?"Client particulier":"Client professionnel"}`,italics:true,size:22,color:"555555"})]}),
         heading("Entre les soussignés"),
