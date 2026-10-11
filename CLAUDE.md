@@ -9,6 +9,7 @@
 
 ## Historique des mises en production
 - 09/10/2026 : app.html = test.html (profils métier, inscription/connexion, devis sans signature + bouton unique BC, dossier de remise par e-mail, correctifs PDF/Apparence, factures fournisseurs reçues dans Administration avec fichier joint + catégorie, rapprochement bancaire fournisseurs). Contrats et dossiers de remise AD Secure vérifiés identiques (rendu comparé).
+- 10/10/2026 : isolation des données entre entreprises sur un même appareil (copie locale par tenant `cleLocale()`, `viderDonnees()` avant tout chargement, `CLOUD_OK` bloque l'envoi tant que les données du tenant connecté n'ont pas été lues). Ne jamais réintroduire de cache commun à tous les comptes.
 - La liste `FOURNISSEURS` est désormais enregistrée avec les données (avant : jamais sauvegardée, reconstituée au chargement depuis COMMANDES/FACFOURN).
 - Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
 
