@@ -2149,7 +2149,7 @@ function modalClient(id){
     </div>
     <div class="field"><label>Relance prévue</label><input type="date" id="c-relance" value="${c.dateRelance||""}"/>${c.relanceEnvoyee&&c.relanceEnvoyee===c.dateRelance?`<div style="font-size:11px;color:#15803d;margin-top:4px">✅ Relance automatique envoyée</div>`:""}</div>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:6px 0"/>
-    <div class="section-sub" style="margin-bottom:4px">Pour le contrat de maintenance</div>
+    <div class="section-sub" style="margin-bottom:4px">Pour le ${FV("contrat").toLowerCase()}</div>
     <div class="field-row">
       <div class="field"><label>Forme juridique</label><input id="c-forme" value="${(c.formeJuridique||"").replace(/"/g,'&quot;')}" placeholder="SAS, SARL… (laisser vide si particulier)"/></div>
       <div class="field"><label>SIRET</label><input id="c-siret" value="${(c.siret||"").replace(/"/g,'&quot;')}" placeholder="000 000 000 00000"/></div>
@@ -2309,7 +2309,7 @@ function modalEvent(id,defaultDate){
   const e=id?EVENTS.find(x=>x.id===id):{id:"",type:"rdv",titre:"",client:"",date:defaultDate||TODAY,heure:"09:00",notes:""};
   showModal(id?"Modifier l'événement":"Nouvel événement",`
     <div class="field-row">
-      <div class="field"><label>Type</label><select id="e-type">${["rdv","chantier","maintenance","prospection","autre"].map(x=>`<option value="${x}"${e.type===x?" selected":""}>${{rdv:"RDV client",chantier:"Chantier",maintenance:"Visite de maintenance",prospection:"Prospection",autre:"Autre"}[x]}</option>`).join("")}</select></div>
+      <div class="field"><label>Type</label><select id="e-type">${["rdv","chantier","maintenance","prospection","autre"].map(x=>`<option value="${x}"${e.type===x?" selected":""}>${{rdv:"RDV client",chantier:"Chantier",maintenance:FV("visite").charAt(0).toUpperCase()+FV("visite").slice(1),prospection:"Prospection",autre:"Autre"}[x]}</option>`).join("")}</select></div>
       <div class="field"><label>Heure</label><input type="time" id="e-heure" value="${e.heure}"/></div>
     </div>
     <div class="field"><label>Titre</label><input id="e-titre" value="${e.titre}" placeholder="Ex : Réunion commerciale"/></div>
@@ -4180,8 +4180,9 @@ const RelancesCore=(function(){
         const prest=((TH.nom||"")+" "+(TH.sous||"")).trim();
         const moyens=`par lettre recommandée avec accusé de réception adressée à ${prest}${TH.contratSiege?", "+TH.contratSiege:""}${TH.email?", ou par courrier électronique à "+TH.email:""}`;
         const prix=Number(x.prixHT||0),prixTTC=Math.round(prix*1.085*100)/100;
-        const sujet="Information sur la reconduction de votre contrat de maintenance";
-        const texte=`Madame, Monsieur,\n\nLe contrat de maintenance de votre ${TH.systemeLibelle||"système de vidéosurveillance"}${x.forfaitLabel?` (forfait ${x.forfaitLabel})`:""}, conclu le ${dateLongue(x.dateSignature)}, arrive au terme de sa période en cours le ${dateLongue(i.ech)}.\n\nSauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${euros(prix)} HT, soit ${euros(prixTTC)} TTC par mois.\n\nConformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard le :\n\n    ${dateLongue(i.limite).toUpperCase()}\n\nSi vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer la maintenance de votre installation, dont les visites préventives semestrielles.\n\nNous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${TH.contratRepresentant||""}${TH.contratQualite?", "+TH.contratQualite:""}\n${sig}`;
+        const ctr=TH.contratLibelle||"contrat de maintenance";
+        const sujet="Information sur la reconduction de votre "+ctr;
+        const texte=`Madame, Monsieur,\n\nLe ${ctr} de votre ${TH.systemeLibelle||"système de vidéosurveillance"}${x.forfaitLabel?` (forfait ${x.forfaitLabel})`:""}, conclu le ${dateLongue(x.dateSignature)}, arrive au terme de sa période en cours le ${dateLongue(i.ech)}.\n\nSauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${euros(prix)} HT, soit ${euros(prixTTC)} TTC par mois.\n\nConformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard le :\n\n    ${dateLongue(i.limite).toUpperCase()}\n\nSi vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer ${TH.contratPrestation||"la maintenance de votre installation"}${TH.contratClauseVisites!==undefined?TH.contratClauseVisites:", dont les visites préventives semestrielles"}.\n\nNous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${TH.contratRepresentant||""}${TH.contratQualite?", "+TH.contratQualite:""}\n${sig}`;
         ajouter({cle:`l215:${x.id}:${i.ech}`,type:"reconduction",refId:x.id,clientId:c.id,ech:i.ech,libelle:"Information reconduction",client:c.nom,sujet,texte},c.email);
       }));
     }
@@ -4191,8 +4192,8 @@ const RelancesCore=(function(){
         if(!e.contratId||!e.date||e.date<today||diff(e.date,today)>j||e.rappelEnvoye===e.date)return;
         const c=trouverClient(data,e.clientId,e.client);
         const contact=c&&c.contact?c.contact:"Madame, Monsieur";
-        const sujet=`Rappel : visite de maintenance le ${dateLongue(e.date)}`;
-        const texte=`Bonjour ${contact},\n\nDans le cadre de votre contrat de maintenance, notre technicien passera pour la visite préventive de votre ${TH.systemeLibelle||"système de vidéosurveillance"} le ${dateLongue(e.date)}${e.heure?" à "+e.heure.replace(":","h"):""}.\n\nMerci de vous assurer que ${TH.accesMateriel||"l'accès au matériel (enregistreur, caméras)"} sera possible. Si ce créneau ne vous convient pas, contactez-nous pour le déplacer.\n\nCordialement,\n${sig}`;
+        const sujet=`Rappel : ${TH.visiteLibelle||"visite de maintenance"} le ${dateLongue(e.date)}`;
+        const texte=`Bonjour ${contact},\n\nDans le cadre de votre ${TH.contratLibelle||"contrat de maintenance"}, ${TH.equipeLibelle||"notre technicien"} passera pour ${TH.visitePrev||"la visite préventive"} de votre ${TH.systemeLibelle||"système de vidéosurveillance"} le ${dateLongue(e.date)}${e.heure?" à "+e.heure.replace(":","h"):""}.\n\nMerci de vous assurer que ${TH.accesMateriel||"l'accès au matériel (enregistreur, caméras)"} sera possible. Si ce créneau ne vous convient pas, contactez-nous pour le déplacer.\n\nCordialement,\n${sig}`;
         ajouter({cle:`visite:${e.id}:${e.date}`,type:"visite",refId:e.id,libelle:"Rappel de visite",client:(c&&c.nom)||e.client||"",sujet,texte},c&&c.email);
       });
     }
@@ -4361,7 +4362,7 @@ function renderRelancesPanel(){
             sw("factures.miseEnDemeure",c.factures.miseEnDemeure,"Envoyer aussi la mise en demeure","Recommandé : laisser décoché et l'envoyer vous-même en recommandé")+
             (c.factures.miseEnDemeure?nb("factures.j3",c.factures.j3,"Mise en demeure","jours après la 2ème"):""):""))}
 
-        ${bloc("📑 Contrats de maintenance",
+        ${bloc("📑 "+FV("contrats"),
           sw("contrats.reconduction",c.contrats.reconduction,"Information avant reconduction (particuliers)","Courrier obligatoire (art. L. 215-1), envoyé dès l'ouverture de la période légale")+
           sw("contrats.visites",c.contrats.visites,"Rappel des visites préventives","Prévient le client avant chaque visite du Planning")+
           (c.contrats.visites?nb("contrats.visitesJours",c.contrats.visitesJours,"Envoyer","jours avant la visite"):""))}
@@ -6855,12 +6856,14 @@ const DOC_ENVOI={
     apresEnvoi:()=>{}
   },
   remise:{
-    titre:"le dossier de remise", liste:()=>CLIENTS, num:c=>c.nom||"",
+    get titre(){ return "le "+FV("remiseLbl").toLowerCase(); }, liste:()=>CLIENTS, num:c=>c.nom||"",
     html:c=>{const o=remiseDefauts(c);const ri=o.sections.pv&&o.riId?INTERVENTIONS.find(x=>x.id===o.riId):null;return dossierRemiseHTML(c,o,ri,false);},
     pages:"section.page", apercu:id=>genererDossierRemise(id),
     client:c=>c, ttc:()=>0, prefixe:"Dossier de remise", envois:c=>{c.dossierRemise=c.dossierRemise||{};return c.dossierRemise.envois=c.dossierRemise.envois||[];},
     cleModele:"modeleMailRemise", reperes:["contact","entreprise","signature"],
-    modele:"Bonjour {contact},\n\nVeuillez trouver ci-joint le dossier de remise de votre installation : fiche du matériel, guide d'utilisation, informations légales, procès-verbal de mise en service, garanties et contacts SAV.\n\nNous vous conseillons de le conserver précieusement. Vos identifiants de connexion vous ont été remis séparément.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}",
+    get modele(){ return MP().video
+      ?"Bonjour {contact},\n\nVeuillez trouver ci-joint le dossier de remise de votre installation : fiche du matériel, guide d'utilisation, informations légales, procès-verbal de mise en service, garanties et contacts SAV.\n\nNous vous conseillons de le conserver précieusement. Vos identifiants de connexion vous ont été remis séparément.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}"
+      :`Bonjour {contact},\n\nVeuillez trouver ci-joint votre ${FV("remiseLbl").toLowerCase()} : récapitulatif des éléments réalisés, conseils d'utilisation et d'entretien, procès-verbal, garanties et contacts.\n\nNous vous conseillons de le conserver précieusement.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}`; },
     valeurs:()=>({}), apresEnvoi:()=>{}
   }
 };
@@ -7295,7 +7298,7 @@ function renderStats(){
       ${tuile("CA facturé "+libPeriode,fMoney(caFacture),`${facPeriode.length} facture(s)`)}
       ${tuile("CA encaissé "+libPeriode,fMoney(caEncaisse),`${paiementsPeriode.length} règlement(s)`,"#15803d")}
       ${tuile("Reste à encaisser",fMoney(resteAEncaisser),facRetard.length?`dont ${fMoney(montantRetard)} en retard (${facRetard.length})`:"aucun retard",facRetard.length?"#991b1b":"#b45309")}
-      ${tuile("Maintenance récurrente",fMoney(recurrentHT)+" HT/mois",`${contrats.length} contrat(s) actif(s) · ${fMoney(recurrentHT*12)} HT/an`,th.c2)}
+      ${tuile(FV("recurrent"),fMoney(recurrentHT)+" HT/mois",`${contrats.length} contrat(s) actif(s) · ${fMoney(recurrentHT*12)} HT/an`,th.c2)}
     </div>
 
     <!-- Objectif du mois + année -->
@@ -7786,19 +7789,23 @@ const FICHE_DEF={
   importFacture:true,remise:true,remiseLbl:"Dossier de remise",
   interventions:"Interventions",riSection:"Rapports d'intervention",riBtn:"Rapport d'intervention",riVide:"Aucune intervention enregistrée.",
   contrat:"Contrat de maintenance",riUnite:"rapport(s)",
+  visite:"visite de maintenance",prestation:"la maintenance de votre installation",
+  contrats:"Contrats de maintenance",recurrent:"Maintenance récurrente",
+  clauseVisites:", dont les visites préventives semestrielles",equipe:"notre technicien",visitePrev:"la visite préventive",parcDate:"Date d'installation",intervenant:"Technicien(s)",
   riTypes:{maintenance:"Maintenance préventive",installation:"Installation / mise en service",depannage:"Dépannage / SAV",audit:"Visite technique / audit"}
 };
 const FICHE_METIER={
-  plomberie:{contrat:"Contrat d'entretien",
+  plomberie:{contrat:"Contrat d'entretien",contrats:"Contrats d'entretien",recurrent:"Entretien récurrent",visite:"visite d'entretien",prestation:"l'entretien de vos équipements",
     riTypes:{maintenance:"Entretien annuel",installation:"Installation / mise en service",depannage:"Dépannage / SAV",audit:"Visite technique / devis"}},
   batiment:{parc:"Ouvrages réalisés",parcIcone:"🧱",parcSub:"ouvrage(s) réalisé(s)",parcUnite:"Ouvrage",
     parcVide:"Aucun ouvrage enregistré.<br/>Ajoutez-les un par un ou importez-les depuis une facture.",
-    remiseLbl:"Dossier de fin de chantier",contrat:"Contrat d'entretien",
+    remiseLbl:"Dossier de fin de chantier",contrat:"Contrat d'entretien",contrats:"Contrats d'entretien",recurrent:"Entretien récurrent",parcDate:"Date de réalisation",visite:"visite d'entretien",prestation:"l'entretien de vos ouvrages",
     riSection:"Rapports de chantier",riBtn:"Rapport de chantier",
     riTypes:{maintenance:"Entretien",installation:"Chantier / réception des travaux",depannage:"Reprise / SAV",audit:"Visite / métré"}},
   services:{parc:"Équipements suivis",parcIcone:"🧰",parcSub:"équipement(s) suivi(s)",parcUnite:"Équipement",
     parcVide:"Aucun équipement suivi.<br/>Ajoutez ceux que vous entretenez chez ce client (piscine, pompe, arrosage, matériel confié…).",
-    importFacture:false,remise:false,contrat:"Contrat d'entretien",
+    importFacture:false,remise:false,contrat:"Contrat d'entretien",contrats:"Contrats d'entretien",recurrent:"Entretien récurrent",parcDate:"Suivi depuis le",intervenant:"Intervenant(s)",
+    clauseVisites:", selon la fréquence de passage convenue",equipe:"notre équipe",visitePrev:"l'entretien",visite:"passage d'entretien",prestation:"l'entretien de votre site",
     interventions:"Passages",riUnite:"passage(s)",riSection:"Comptes rendus de passage",riBtn:"Compte rendu de passage",riVide:"Aucun passage enregistré.",
     riTypes:{maintenance:"Passage d'entretien",installation:"Mise en place / premier passage",depannage:"Intervention ponctuelle",audit:"Visite / estimation"}}
 };
@@ -7832,6 +7839,14 @@ function appliquerMetier(){
     // Lu par le serveur pour les e-mails de relance (reconduction, rappel de visite)
     TH.systemeLibelle=p.systeme;
     TH.accesMateriel=p.accesMateriel;
+    TH.contratLibelle=FV("contrat").toLowerCase();
+    TH.visiteLibelle=FV("visite");
+    TH.contratPrestation=FV("prestation");
+    TH.contratClauseVisites=FV("clauseVisites");
+    TH.equipeLibelle=FV("equipe");
+    TH.visitePrev=FV("visitePrev");
+    // Catégories du catalogue encore celles de la sécurité (nouvel abonné d'un autre métier) → celles du métier
+    if(metierId()!=="securite"&&JSON.stringify(CAT_PRODUITS)===JSON.stringify(METIERS.securite.catProduits)) CAT_PRODUITS=p.catProduits.slice();
   }catch(e){ console.warn("appliquerMetier:",e); }
 }
 
@@ -7873,9 +7888,9 @@ function renderMetierPanel(){
     <div class="p-field"><select id="mp-metier" onchange="if(confirm('Changer de métier ? Les listes ci-dessous reviendront aux valeurs du nouveau métier. Vos clients, devis et factures ne changent pas.'))choisirMetier(this.value);else this.value='${id}'">
       ${METIER_ORDRE.map(k=>`<option value="${k}" ${k===id?"selected":""}>${METIERS[k].icone} ${pE(METIERS[k].label)}</option>`).join("")}</select></div>
     ${reglageTitre("Personnaliser","Une ligne par élément. Laissez vide pour revenir aux valeurs du métier.")}
-    ${zone("parc","Types de matériel suivis",p.parcTypes,"Utilisés dans le parc installé de chaque client")}
-    ${zone("maint","Liste de contrôle — visite d'entretien",p.check.maintenance,"Proposée dans chaque rapport de maintenance")}
-    ${zone("inst","Liste de contrôle — installation",p.check.installation,"Proposée dans chaque rapport d'installation")}
+    ${zone("parc",MP().video?"Types de matériel suivis":"Types d'éléments suivis",p.parcTypes,"Utilisés dans la rubrique « "+FV("parc")+" » de chaque client")}
+    ${zone("maint","Liste de contrôle — "+RI_TYPES.maintenance.toLowerCase(),p.check.maintenance,"Proposée dans chaque rapport « "+RI_TYPES.maintenance+" »")}
+    ${zone("inst","Liste de contrôle — "+RI_TYPES.installation.toLowerCase(),p.check.installation,"Proposée dans chaque rapport « "+RI_TYPES.installation+" »")}
     <div class="field-row"><div class="p-field"><label class="field-label">Unité des forfaits (singulier)</label><input id="mp-u1" value="${pE(p.unite[0])}"/></div>
     <div class="p-field"><label class="field-label">Unité (pluriel)</label><input id="mp-u2" value="${pE(p.unite[1])}"/></div></div>`,
     `<button class="btn-reset" onclick="closePanel();openPanel('settings')">← Réglages</button><button class="btn-apply" onclick="enregistrerMetierPerso()">Enregistrer ✓</button>`);
@@ -7981,7 +7996,7 @@ function modalParc(clientId,id){
       <div class="field"><label>Adresse MAC</label><input id="pa-mac" value="${pE(x.mac)}" autocapitalize="characters"/></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Date d'installation</label><input type="date" id="pa-date" value="${pE(x.dateInstall)}"/></div>
+      <div class="field"><label>${FV("parcDate")}</label><input type="date" id="pa-date" value="${pE(x.dateInstall)}"/></div>
       <div class="field"><label>Garantie (mois)</label><input type="number" id="pa-gar" min="0" value="${x.garantieMois!=null?x.garantieMois:24}"/></div>
     </div>
     <div class="field"><label>Notes</label><textarea id="pa-notes" style="min-height:60px" placeholder="Identifiants stockés ailleurs, particularités…">${pE(x.notes)}</textarea></div>
@@ -8212,7 +8227,7 @@ function ouvrirFormRI(){
       <div class="field"><label>Arrivée</label><input type="time" id="ri-hd" value="${pE(r.hDebut)}"/></div>
       <div class="field"><label>Départ</label><div style="display:flex;gap:6px"><input type="time" id="ri-hf" value="${pE(r.hFin)}" style="flex:1"/><button type="button" class="btn-sm" onclick="const n=new Date();document.getElementById('ri-hf').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')">Maintenant</button></div></div>
     </div>
-    <div class="field"><label>Technicien(s)</label><input id="ri-tech" value="${pE(r.technicien)}"/></div>
+    <div class="field"><label>${FV("intervenant")}</label><input id="ri-tech" value="${pE(r.technicien)}"/></div>
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin:6px 0 6px">Points de contrôle</div>
     <div id="ri-check">${riCheckHTML()}</div>
     <div style="display:flex;gap:6px;margin:6px 0 14px"><input id="ri-newcheck" placeholder="Ajouter un point de contrôle…" style="flex:1;padding:8px 10px;border-radius:9px;border:1.5px solid #e2e8f0;font-size:13px"/><button type="button" class="btn-sm" onclick="riAjouterCheck()">＋</button></div>
@@ -8631,7 +8646,7 @@ function dossierRemiseHTML(c,o,ri,impression){
     const contrat=(c.contratsSignes||[]).find(x=>!x.resilie);
     sections.push(page("Garanties, maintenance et assistance",`
       <div class="bloc"><h2>Garantie du matériel</h2><p>Le matériel est garanti ${garMin?`jusqu'au <strong>${pE(RelancesCore.dateLongue(garMin))}</strong> au minimum (détail par équipement dans la fiche du matériel)`:"selon les durées indiquées par équipement"}. La garantie couvre les défauts de fabrication ; elle ne couvre pas les dommages dus à la foudre, aux surtensions, aux chocs, à l'humidité ou à une intervention extérieure.</p></div>
-      <div class="bloc"><h2>Maintenance</h2><p>${contrat?`Votre contrat de maintenance${contrat.forfaitLabel?" (forfait "+pE(contrat.forfaitLabel)+")":""} prévoit une visite préventive tous les six mois : ${pE(MP().resumeVisite)}. Vous êtes prévenu par e-mail avant chaque visite.`:`Une visite préventive tous les six mois (nettoyage des optiques, contrôle de l'enregistrement, mises à jour) prolonge la durée de vie de votre installation. Demandez-nous notre contrat de maintenance.`}</p></div>
+      <div class="bloc"><h2>${FV("contrat")==="Contrat de maintenance"?"Maintenance":"Entretien"}</h2><p>${contrat?`Votre ${FV("contrat").toLowerCase()}${contrat.forfaitLabel?" (forfait "+pE(contrat.forfaitLabel)+")":""} prévoit une visite préventive tous les six mois : ${pE(MP().resumeVisite)}. Vous êtes prévenu par e-mail avant chaque visite.`:`Une visite préventive tous les six mois (nettoyage des optiques, contrôle de l'enregistrement, mises à jour) prolonge la durée de vie de votre installation. Demandez-nous notre contrat de maintenance.`}</p></div>
       <div class="bloc contact"><h2>Nous contacter</h2>
         <div style="font-size:16px;font-weight:800;margin-bottom:6px">${pE(ent)}</div>
         ${TH.tel?`<div>📞 ${pE(TH.tel)}</div>`:""}${TH.email?`<div>✉️ ${pE(TH.email)}</div>`:""}${TH.site?`<div>🌐 ${pE(String(TH.site).replace(/^https?:\/\//,""))}</div>`:""}
@@ -9009,7 +9024,7 @@ function renderContratsSignesSection(c){
   const list=(c.contratsSignes||[]).slice().sort((a,b)=>(b.dateSignature||"").localeCompare(a.dateSignature||""));
   return `<div class="section-card" style="background:${TH.card};margin-bottom:20px">
     <div class="section-head">
-      <div><div class="section-title" style="color:${TH.txt}">📑 Contrats de maintenance signés</div><div class="section-sub">${list.length} contrat(s)</div></div>
+      <div><div class="section-title" style="color:${TH.txt}">📑 ${FV("contrats")} signés</div><div class="section-sub">${list.length} contrat(s)</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-add" style="background:#6d28d910;color:#6d28d9;border:1.5px solid #6d28d933" onclick="modalContrat('${c.id}')">📄 Générer</button>
         <button class="btn-add" style="background:${TH.c1};color:#fff" onclick="modalContratSigne('${c.id}')">＋ Ajouter un contrat signé</button>
@@ -9177,13 +9192,13 @@ function genererCourrierReconduction(clientId,docId){
     <div class="exp"><div class="nom">${ctrEsc(prest)}</div><div>${contactPrest}</div></div>
     <div class="dest"><strong>${ctrEsc(c.nom)}</strong><br/>${ctrEsc(c.adresse||"")}</div>
     <div class="date">Le ${fDate(getToday())}</div>
-    <div class="objet">Objet : information sur la reconduction de votre contrat de maintenance (article L. 215-1 du Code de la consommation)</div>
+    <div class="objet">Objet : information sur la reconduction de votre ${ctrEsc(FV("contrat").toLowerCase())} (article L. 215-1 du Code de la consommation)</div>
     <p>Madame, Monsieur,</p>
-    <p>Le contrat de maintenance de votre ${ctrEsc(MP().systeme)}${x.forfaitLabel?` (forfait ${ctrEsc(x.forfaitLabel)})`:""}, conclu le ${fDate(x.dateSignature)}, arrive au terme de sa période en cours le <strong>${fDate(i.ech)}</strong>.</p>
+    <p>Le ${ctrEsc(FV("contrat").toLowerCase())} de votre ${ctrEsc(MP().systeme)}${x.forfaitLabel?` (forfait ${ctrEsc(x.forfaitLabel)})`:""}, conclu le ${fDate(x.dateSignature)}, arrive au terme de sa période en cours le <strong>${fDate(i.ech)}</strong>.</p>
     <p>Sauf refus de votre part, il sera reconduit tacitement pour une durée de douze (12) mois, conformément à son article 2, aux conditions en vigueur, soit actuellement ${ctrEur(x.prixHT)} HT, soit ${ctrEur(ctrTTC(x.prixHT))} TTC par mois.</p>
     <p>Conformément à l'article L. 215-1 du Code de la consommation, nous vous informons que vous pouvez refuser cette reconduction. Il vous suffit de nous faire part de votre décision ${moyens}, au plus tard à la date indiquée ci-dessous.</p>
     <div class="encadre"><div class="lbl">Date limite de non-reconduction</div><div class="dt">${fDate(i.limite)}</div></div>
-    <p>Si vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer la maintenance de votre installation, dont les visites préventives semestrielles.</p>
+    <p>Si vous ne faites rien, votre contrat se poursuivra et nous continuerons à assurer ${TH.contratPrestation||"la maintenance de votre installation"}${TH.contratClauseVisites!==undefined?TH.contratClauseVisites:", dont les visites préventives semestrielles"}.</p>
     <p>Nous restons à votre disposition pour toute question et vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.</p>
     <div class="sign">${ctrEsc(TH.contratRepresentant)}<br/>${ctrEsc(TH.contratQualite)}, ${ctrEsc(prest)}</div>
     <script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>
@@ -10170,7 +10185,7 @@ function renderSettingsPanel(){
         ${reglageGroupe("Documents et e-mails",[
           reglageItem("✉️","E-mails et signatures",SigMail.cfg(TH).actif?"Signature avec logo activée":"Signature désactivée","emails"),
           hasRole("admin")?reglageItem("🔔","Relances automatiques",RelancesCore.config(TH).actif?"Activées · envoi chaque matin":"Désactivées","relances"):"",
-          reglageItem("📄","Contrats de maintenance","Cocontractant, engagements, grille tarifaire","contrats"),
+          reglageItem("📄",FV("contrats"),"Cocontractant, engagements, grille tarifaire","contrats"),
           reglageItem("📚","Historique des documents",DOCSHIST.length+" document(s) généré(s)","docs")])}
         ${hasRole("admin")?reglageGroupe("Sécurité et données",[
           reglageItem("📜","Journal d'activité",JOURNAL.length+" événement(s) enregistré(s)","journal"),
@@ -10358,7 +10373,7 @@ function renderEmailsPanel(){
 }
 // 📄 Contrats de maintenance
 function renderContratsPanel(){
-  return panelShell("📄","Contrats de maintenance",`
+  return panelShell("📄",FV("contrats"),`
     ${reglageTitre("Cocontractant","Informations reprises dans les contrats générés")}
         <div class="p-field"><label class="field-label">Si&egrave;ge social (contrat)</label><input type="text" value="${TH.contratSiege||''}" oninput="TH.contratSiege=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">SIREN (contrat)</label><input type="text" value="${TH.contratSiren||''}" oninput="TH.contratSiren=this.value;saveData()"/></div>
