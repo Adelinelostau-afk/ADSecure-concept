@@ -24,6 +24,11 @@
 - Vocabulaire par métier : `FICHE_DEF` (valeurs AD Secure, ne pas modifier) + `FICHE_METIER` (surcharges), lu avec `FV(clé)`. `appliquerMetier()` écrit aussi dans TH les libellés lus par les relances (`contratLibelle`, `visiteLibelle`, `contratPrestation`, `contratClauseVisites`, `equipeLibelle`, `visitePrev`) et remplace les catégories du catalogue sécurité par celles du métier.
 - Fonction Edge `relances-auto` : code versionné dans `supabase/functions/relances-auto/`. `shared.js` = copie exacte de `SigMail` + `RelancesCore` de test.html (préfixe `export`). index.ts l'importe via jsDelivr figé sur un commit : après toute modification de `RelancesCore`, régénérer shared.js, committer, puis redéployer index.ts avec le nouveau hash.
 
+## Agenda
+- Événement : `{id,type,titre,client,clientId,adresse,date,heure,fin,assignes:[userId],notes}` (+ `contratId`, `visiteNum`, `riId` pour les visites). `evFin(e)` = fin ou début + 1 h (anciens événements).
+- Équipe : `TH.equipe` [{id,nom,couleur}] recopiée depuis `profiles` par un admin à la connexion (`syncEquipe`) — les utilisateurs simples ne peuvent pas lire `profiles` (RLS).
+- Synchro téléphone : `TH.icsTokens` {jeton48hex: {uid,nom,portee:"moi"|"tous"}} ; fonction Edge `agenda-ics` (verify_jwt false, code dans `supabase/functions/agenda-ics/`), `&test=1` lit app_data_test. Fuseau : `TH.fuseau` (défaut America/Martinique).
+
 ## Inscription et connexion
 - `inscription.html` (publique, noindex tant que non validée) appelle la fonction Edge `inscription` (verify_jwt false) : crée tenant (statut `essai`, `essai_fin` = +14 j, `metier`, `plan` 1-3/4-7/8+), `app_data` initial, profil admin, envoie l'invitation (redirection app.html ou test.html si `?test`) et prévient contact@. Anti-abus : champ piège + 5 inscriptions/IP/jour (`inscriptions_log`).
 - Connexion : « Mot de passe oublié », écran de choix du mot de passe à l'arrivée d'un lien invite/recovery (`AUTH_LIEN`), blocage à la fin de l'essai (`essai_fin` dépassée).
