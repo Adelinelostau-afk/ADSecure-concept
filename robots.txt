@@ -3,5 +3,8 @@ Allow: /
 Disallow: /app.html
 Disallow: /signer.html
 Disallow: /test.html
+Disallow: /test/
+Disallow: /app/
+Disallow: /outils/
 
 Sitemap: https://www.adsecureconcept.fr/sitemap.xml

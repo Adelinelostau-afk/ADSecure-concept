@@ -2,8 +2,15 @@
 
 ## Version de test obligatoire
 - `app.html` = version en production (utilisée par Adeline et Daniel). `test.html` = version de test.
-- Les deux fichiers ont le même code. Le mode test s'active tout seul quand la page s'appelle `test*.html` (constante `AD_TEST`).
-- Toute modification se fait d'abord dans `test.html`. Elle n'est recopiée dans `app.html` (`cp test.html app.html`) qu'après validation explicite d'Adeline.
+- Les deux ont le même code. Le mode test s'active tout seul quand la page s'appelle `test*.html` (constante `AD_TEST`).
+- Toute modification se fait d'abord dans la version de test (`test.html` + dossier `test/`). Elle n'est recopiée en production qu'après validation explicite d'Adeline, avec `python3 outils/publier.py` (test/ → app/, test.html → app.html).
+
+## Organisation du code (découpé le 21/10/2026)
+- La page (`test.html`) ne contient que le HTML et le petit script du bandeau test. Le style est dans `test/style.css`, le code dans `test/js/NN-rubrique.js`, chargés dans l'ordre des numéros (scripts classiques, portée globale partagée : comme l'ancien script unique).
+- Fichiers : 01-base (helpers, rôles, données, thème, mode test, sauvegardes, navigation, modales), 02-clients, 03-agenda, 04-stock-fournisseurs, 05-factures-banque-caisse, 06-paiements-relances (`SigMail` + `RelancesCore`), 07-tableau-de-bord-factures (tableau de bord + édition factures), 08-pdf-prospects, 09-devis-catalogue, 10-commandes-clients, 11-signature-envoi, 12-statistiques, 13-grand-livre, 14-metiers, 15-parc-interventions, 16-remise-fiche-client, 17-contrats, 18-pages-reglages-demarrage (renderPage, panneaux, utilisateurs, `bootApp()` en dernier).
+- Règle : le code exécuté au chargement d'un fichier ne doit utiliser que ce qui est défini dans ce fichier ou un fichier précédent (le reste ne sert qu'après `bootApp()`). Un nouveau fichier = l'ajouter dans la page à sa place.
+- Après chaque modification : `python3 outils/verifier.py test.html` (syntaxe de chaque fichier) puis `python3 outils/versions.py test.html` (met à jour les `?v=` pour que l'iPad ne garde pas l'ancien fichier en cache).
+- Découpage vérifié : code recollé identique octet pour octet, mêmes 1 850 noms globaux, 12 pages + 12 panneaux + contrat/courrier/dossier de remise rendus à l'identique.
 - En mode test : données dans la table `app_data_test` (copie, bouton « Repartir des vraies données »), clé locale séparée, pas de sauvegardes, pas de relances clients, pas de lien de signature, pas de gestion des utilisateurs, e-mails redirigés vers l'utilisateur connecté.
 - Toute nouvelle fonction qui écrit dans une table partagée ou qui contacte un client doit être neutralisée en mode test (`testBloque(...)`).
 
@@ -24,7 +31,7 @@
 - AD Secure est forcé sur `securite` (ADS_TH). Ses contrats et dossiers de remise doivent rester identiques au mot près : vérifier par comparaison avant toute mise en production.
 - Ajouter un métier = ajouter un objet dans `METIERS` + son id dans `METIER_ORDRE`.
 - Vocabulaire par métier : `FICHE_DEF` (valeurs AD Secure, ne pas modifier) + `FICHE_METIER` (surcharges), lu avec `FV(clé)`. `appliquerMetier()` écrit aussi dans TH les libellés lus par les relances (`contratLibelle`, `visiteLibelle`, `contratPrestation`, `contratClauseVisites`, `equipeLibelle`, `visitePrev`) et remplace les catégories du catalogue sécurité par celles du métier.
-- Fonction Edge `relances-auto` : code versionné dans `supabase/functions/relances-auto/`. `shared.js` = copie exacte de `SigMail` + `RelancesCore` de test.html (préfixe `export`). index.ts l'importe via jsDelivr figé sur un commit : après toute modification de `RelancesCore`, régénérer shared.js, committer, puis redéployer index.ts avec le nouveau hash.
+- Fonction Edge `relances-auto` : code versionné dans `supabase/functions/relances-auto/`. `shared.js` = copie exacte de `SigMail` + `RelancesCore` de `test/js/06-paiements-relances.js` (préfixe `export`). index.ts l'importe via jsDelivr figé sur un commit : après toute modification de `RelancesCore`, régénérer shared.js, committer, puis redéployer index.ts avec le nouveau hash.
 
 ## Agenda
 - Événement : `{id,type,titre,client,clientId,adresse,date,heure,fin,assignes:[userId],notes}` (+ `contratId`, `visiteNum`, `riId` pour les visites). `evFin(e)` = fin ou début + 1 h (anciens événements).
