@@ -940,7 +940,7 @@ function getToday(){const d=new Date();return d.getFullYear()+"-"+String(d.getMo
 const TODAY=getToday();
 function daysDiff(s){return Math.ceil((new Date(s+"T00:00:00")-new Date(getToday()+"T00:00:00"))/86400000);}
 function fDate(s){return s?new Date(s+"T00:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"short"}):"—";}
-function fMoney(n){return Number(n).toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0});}
+function fMoney(n){return (Number(n)||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});}
 function uid(){return Date.now()+Math.random().toString(36).slice(2);}
 function getW0(){const d=new Date();const day=d.getDay()===0?6:d.getDay()-1;d.setDate(d.getDate()-day);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 const w0=getW0();
@@ -1126,7 +1126,7 @@ function fTaux(t){ return String(Number(t)||0).replace(".",",")+" %"; }
 function facTauxTVA(f){ return (f.tva!==undefined&&f.tva!==null)?f.tva:TVA_DEFAUT; }
 function facHT(f){
   if(f.lignes&&f.lignes.length) return f.lignes.reduce((s,l)=>s+(l.qte||0)*(l.pu||0),0);
-  return Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100))); // rétrocompat : déduit le HT du TTC
+  return Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100))*100)/100; // rétrocompat : déduit le HT du TTC (au centime)
 }
 function facTVA(f){ return facHT(f)*(facTauxTVA(f)/100); }
 function facTTC(f){
@@ -2145,7 +2145,7 @@ function modalClient(id){
     </div>
     <div class="field-row">
       <div class="field"><label>Dernière commande</label><input type="date" id="c-date" value="${c.dernCmd}"/></div>
-      <div class="field"><label>CA total (€)</label><input type="number" id="c-ca" value="${c.ca}"/></div>
+      <div class="field"><label>CA total (€)</label><input type="number" step="any" id="c-ca" value="${c.ca}"/></div>
     </div>
     <div class="field"><label>Relance prévue</label><input type="date" id="c-relance" value="${c.dateRelance||""}"/>${c.relanceEnvoyee&&c.relanceEnvoyee===c.dateRelance?`<div style="font-size:11px;color:#15803d;margin-top:4px">✅ Relance automatique envoyée</div>`:""}</div>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:6px 0"/>
@@ -2828,7 +2828,7 @@ function bcRenderLignes(){
     <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
       <input list="bc-stock-list" value="${(l.ref||"").replace(/"/g,"&quot;")}" placeholder="Réf" onchange="bcPickRef(${i},this.value)" oninput="bcSetLigne(${i},'ref',this.value)" style="width:80px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px"/>
       <input value="${(l.desc||"").replace(/"/g,"&quot;")}" placeholder="Désignation" oninput="bcSetLigne(${i},'desc',this.value)" style="flex:1;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px"/>
-      <input type="number" min="0" value="${l.qte}" placeholder="Qté" oninput="bcSetLigne(${i},'qte',this.value)" style="width:60px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px"/>
+      <input type="number" min="0" step="any" value="${l.qte}" placeholder="Qté" oninput="bcSetLigne(${i},'qte',this.value)" style="width:60px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px"/>
       <input type="number" min="0" step="0.01" value="${l.pu}" placeholder="P.U." oninput="bcSetLigne(${i},'pu',this.value)" style="width:74px;padding:8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px"/>
       <button onclick="bcDelLigne(${i})" style="width:30px;height:34px;border:1.5px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:7px;cursor:pointer;font-size:12px;flex-shrink:0">✕</button>
     </div>`).join("")+`<datalist id="bc-stock-list">${opts}</datalist>`;
@@ -5186,7 +5186,7 @@ function renderDashboard(){ return renderDashboardModulable(); }
 function modalFacture(id){
   const f=id?FACTURES.find(x=>x.id===id):{id:"",num:prochainNumero("FAC",FACTURES),date:TODAY,client:"",clientId:"",ech:addDays(TODAY,30),statut:"brouillon",tva:TVA_DEFAUT,refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
   // Rétrocompat : ancienne facture sans lignes → on en crée une à partir du ttc
-  let lignesInit=(f.lignes&&f.lignes.length)?f.lignes:[{desc:"Prestation",qte:1,pu:Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100)))}];
+  let lignesInit=(f.lignes&&f.lignes.length)?f.lignes:[{desc:"Prestation",qte:1,pu:Math.round((f.ttc||0)/(1+(facTauxTVA(f)/100))*100)/100}];
   window._facLignes=JSON.parse(JSON.stringify(lignesInit));
   showModal(id?"Modifier la facture":"Nouvelle facture",
     `<div class="field-row">
@@ -5208,7 +5208,7 @@ function modalFacture(id){
     <div class="field-row">
       <div class="field"><label>Statut</label><select id="fac-statut">${Object.entries(ST_FAC).map(([k,v])=>`<option value="${k}"${f.statut===k?" selected":""}>${v[2]}</option>`).join("")}</select></div>
     </div>
-    <div class="field"><label>TVA (%)</label><input type="number" id="fac-tva" value="${facTauxTVA(f)}" oninput="updateFacTotaux()"/></div>
+    <div class="field"><label>TVA (%)</label><input type="number" step="any" id="fac-tva" value="${facTauxTVA(f)}" oninput="updateFacTotaux()"/></div>
     <div class="field">
       <label>Ajout rapide depuis le catalogue <span id="fac-cat-picker-cpt" style="font-weight:600;color:#94a3b8"></span></label>
       <div style="display:flex;gap:6px;margin-bottom:8px">
@@ -5315,7 +5315,7 @@ function saveFacture(id){
     statut:document.getElementById("fac-statut").value,
     refChantier:(document.getElementById("fac-chantier")?.value||"").trim(),
     tva,lignes,
-    ttc:Math.round(ht*(1+tva/100))
+    ttc:Math.round(ht*(1+tva/100)*100)/100
   };
   if(id){FACTURES=FACTURES.map(f=>f.id===id?{...f,...obj}:f);logActivity("Modification facture",obj.num);}
   else{FACTURES.push({...obj,id:uid()});logActivity("Création facture",obj.num);}
@@ -5650,7 +5650,7 @@ function modalProspect(id,defaultStage){
       <div class="field"><label>Téléphone</label><input type="tel" id="pp-phone" value="${p.phone}"/></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Montant estimé (€)</label><input type="number" id="pp-amt" value="${p.amount||""}" placeholder="0"/></div>
+      <div class="field"><label>Montant estimé (€)</label><input type="number" step="any" id="pp-amt" value="${p.amount||""}" placeholder="0"/></div>
       <div class="field"><label>Température</label><select id="pp-temp">
         <option value="chaud"${p.temp==="chaud"?" selected":""}>🔴 Chaud</option>
         <option value="tiede"${p.temp==="tiede"?" selected":""}>🟡 Tiède</option>
@@ -5824,7 +5824,7 @@ function modalDevis(id){
       <div class="field"><label>Statut</label><select id="dv-statut">
         ${Object.entries(ST_DEVIS).map(([k,v])=>`<option value="${k}"${d.statut===k?" selected":""}>${v[2]}</option>`).join("")}
       </select></div>
-      <div class="field"><label>TVA (%)</label><input type="number" id="dv-tva" value="${d.tva}" oninput="updateDevisTotaux()"/></div>
+      <div class="field"><label>TVA (%)</label><input type="number" step="any" id="dv-tva" value="${d.tva}" oninput="updateDevisTotaux()"/></div>
     </div>
     <div class="field">
       <label>Ajout rapide depuis le catalogue <span id="cat-picker-cpt" style="font-weight:600;color:#94a3b8"></span></label>
@@ -6257,7 +6257,7 @@ function devisVersFacture(id){
     statut:"envoyee",
     tva:(d.tva!==undefined&&d.tva!==null)?d.tva:TVA_DEFAUT,
     lignes:JSON.parse(JSON.stringify(d.lignes||[])),  // reprend TOUTES les lignes du devis
-    ttc:Math.round(devisTTC(d))
+    ttc:Math.round(devisTTC(d)*100)/100
   });
   logActivity("Conversion devis→facture",`${d.num} → ${num} (${(d.lignes||[]).length} ligne(s))`);
   alert(`Facture ${num} créée avec le détail des articles ! Retrouvez-la dans Factures.`);
@@ -6289,7 +6289,7 @@ function modalBCC(id){
       <div class="field"><label>Statut</label><select id="bcc-statut">
         ${Object.entries(ST_BCC).map(([k,v])=>`<option value="${k}"${b.statut===k?" selected":""}>${v[2]}</option>`).join("")}
       </select></div>
-      <div class="field"><label>TVA (%)</label><input type="number" id="bcc-tva" value="${(b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT}" oninput="updateBccTotaux()"/></div>
+      <div class="field"><label>TVA (%)</label><input type="number" step="any" id="bcc-tva" value="${(b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT}" oninput="updateBccTotaux()"/></div>
     </div>
     <div class="field">
       <label>Ajout rapide depuis le catalogue <span id="bcc-cat-picker-cpt" style="font-weight:600;color:#94a3b8"></span></label>
@@ -6447,7 +6447,7 @@ function bccVersFacture(id){
     tva:(b.tva!==undefined&&b.tva!==null)?b.tva:TVA_DEFAUT,
     lignes:JSON.parse(JSON.stringify(b.lignes||[])),
     paiements:JSON.parse(JSON.stringify(b.paiements||[])),  // reprend les règlements du BC
-    ttc:Math.round(devisTTC(b))
+    ttc:Math.round(devisTTC(b)*100)/100
   });
   // Statut cohérent avec les règlements repris
   const nf=FACTURES[FACTURES.length-1];
@@ -10655,7 +10655,7 @@ function renderContratsPanel(){
               <input type="number" min="0" value="${f.min}" style="width:52px" title="Mini ${MP().unite[1]}" oninput="TH.contratForfaits[${i}].min=Number(this.value);saveData()"/>
               <span style="color:#94a3b8;font-size:12px">à</span>
               <input type="number" min="0" value="${f.max==null?'':f.max}" style="width:52px" placeholder="∞" title="Maxi ${MP().unite[1]} (vide = illimité)" oninput="TH.contratForfaits[${i}].max=this.value===''?null:Number(this.value);saveData()"/>
-              <input type="number" min="0" value="${f.prix}" style="width:66px" title="€ HT / mois" oninput="TH.contratForfaits[${i}].prix=Number(this.value);saveData()"/>
+              <input type="number" min="0" step="any" value="${f.prix}" style="width:66px" title="€ HT / mois" oninput="TH.contratForfaits[${i}].prix=Number(this.value);saveData()"/>
               <span style="color:#94a3b8;font-size:11px">€/mois</span>
             </div>`).join("")}
         </div>
