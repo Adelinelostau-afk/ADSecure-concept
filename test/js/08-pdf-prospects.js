@@ -121,27 +121,31 @@ function genererFacturePDF(id){
 // ════════════════════════════════════════════════════════
 // ── PIPELINE PROSPECTS ──────────────────────────────────
 // ════════════════════════════════════════════════════════
+function pipeEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+const PIPE_TEMPS={chaud:"🔴 Chaud",tiede:"🟡 Tiède",froid:"🔵 Froid"};
 function pipeFilter(list){
   const q=pipeSearch.toLowerCase().trim();
   if(!q) return list;
-  return list.filter(p=>[p.name,p.company,p.email,p.notes].join(" ").toLowerCase().includes(q));
+  return list.filter(p=>[p.name,p.company,p.email,p.phone,p.notes].join(" ").toLowerCase().includes(q));
 }
+function pipeEstOuvert(p){return p.stage!=="perdu"&&p.stage!=="gagne";}
 function pipeStats(){
-  const active=PROSPECTS.filter(p=>p.stage!=="perdu"&&p.stage!=="gagne");
+  const active=PROSPECTS.filter(pipeEstOuvert);
   const won=PROSPECTS.filter(p=>p.stage==="gagne");
-  const pipeline=active.reduce((s,p)=>s+p.amount,0);
-  const wonAmt=won.reduce((s,p)=>s+p.amount,0);
-  const total=PROSPECTS.filter(p=>p.stage==="gagne"||p.stage==="perdu").length;
+  const lost=PROSPECTS.filter(p=>p.stage==="perdu");
+  const pipeline=active.reduce((s,p)=>s+(Number(p.amount)||0),0);
+  const wonAmt=won.reduce((s,p)=>s+(Number(p.amount)||0),0);
+  const total=won.length+lost.length; // prospects dont l'issue est connue
   const txConv=total>0?Math.round(won.length/total*100):0;
-  const urgent=PROSPECTS.filter(p=>p.date&&p.date<=TODAY&&p.stage!=="gagne"&&p.stage!=="perdu").length;
-  return{active,won,pipeline,wonAmt,txConv,urgent,total:PROSPECTS.length};
+  const urgent=active.filter(p=>p.date&&p.date<=TODAY).length;
+  return{active,won,lost,pipeline,wonAmt,txConv,urgent,total:PROSPECTS.length};
 }
 function renderPipeline(){
   const st=pipeStats();
   const th=TH;
   return`
   <style>
-    .pipe-board{display:flex;gap:13px;overflow-x:auto;align-items:flex-start;padding-bottom:12px}
+    .pipe-board{display:flex;gap:13px;overflow-x:auto;align-items:flex-start;padding-bottom:12px;-webkit-overflow-scrolling:touch}
     .pipe-col{background:${th.card};border-radius:12px;min-width:220px;width:220px;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.07);max-height:calc(100vh - 260px)}
     .pipe-col-hd{padding:11px 13px 9px;border-bottom:1px solid ${th.bg};border-radius:12px 12px 0 0;background:inherit;position:sticky;top:0;z-index:1}
     .pipe-col-title{font-size:12px;font-weight:700;display:flex;align-items:center;gap:7px}
@@ -149,10 +153,10 @@ function renderPipeline(){
     .pipe-col-count{background:${th.bg};color:${th.txt};border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700}
     .pipe-col-total{font-size:10px;color:${th.txt}66;padding:3px 13px 7px;font-style:italic}
     .pipe-cards{padding:9px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:7px;min-height:60px}
-    .pipe-card{background:${th.bg};border:1.5px solid ${th.sand};border-radius:9px;padding:11px;cursor:grab;transition:box-shadow 0.18s,transform 0.14s;position:relative}
+    .pipe-card{background:${th.bg};border:1.5px solid ${th.sand};border-radius:9px;padding:11px;cursor:grab;transition:box-shadow 0.18s,transform 0.14s;position:relative;-webkit-user-select:none;user-select:none}
     .pipe-card:hover{box-shadow:0 5px 14px rgba(50,134,160,0.18);transform:translateY(-1px)}
     .pipe-card.dragging{opacity:0.45;cursor:grabbing}
-    .pipe-card-name{font-size:12px;font-weight:700;color:${th.txt};margin-bottom:3px;padding-right:50px}
+    .pipe-card-name{font-size:12px;font-weight:700;color:${th.txt};margin-bottom:3px;padding-right:76px}
     .pipe-card-co{font-size:10px;color:${th.txt}77;margin-bottom:7px;font-style:italic}
     .pipe-card-amt{font-size:14px;font-weight:700;color:${th.c1};margin-bottom:5px}
     .pipe-card-meta{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px}
@@ -160,36 +164,46 @@ function renderPipeline(){
     .pipe-tag-chaud{background:#fdecea;color:#c0392b}
     .pipe-tag-tiede{background:#fef5e7;color:#e67e22}
     .pipe-tag-froid{background:#e8f4f8;color:#3286A0}
+    .pipe-tag-client{background:#dcfce7;color:#15803d}
     .pipe-card-date{font-size:9px;color:${th.txt}66;display:flex;align-items:center;gap:3px}
     .pipe-card-acts{position:absolute;top:7px;right:7px;display:flex;gap:3px;opacity:0;transition:opacity 0.18s}
     .pipe-card:hover .pipe-card-acts{opacity:1}
     .pipe-card-btn{background:white;border:1px solid #ddd;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center}
     .pipe-card-btn:hover{background:${th.bg}}
     .pipe-card-btn.del:hover{background:#fdecea;border-color:#c0392b}
+    @media (hover:none){
+      .pipe-card-acts{opacity:1}
+      .pipe-card-btn{width:30px;height:30px;font-size:13px}
+      .pipe-card-name{padding-right:100px}
+    }
     .pipe-drop-over{background:rgba(50,134,160,0.08)!important;outline:2px dashed ${th.c1}}
     .pipe-add-btn{margin:7px 9px 9px;padding:7px;border:1.5px dashed ${th.sand};border-radius:7px;background:none;color:${th.txt}55;font-size:11px;cursor:pointer;width:calc(100% - 18px);font-family:'${th.police}',Georgia,serif;transition:all 0.2s;text-align:center}
     .pipe-add-btn:hover{border-color:${th.c1};color:${th.c1};background:rgba(50,134,160,0.05)}
     .pipe-empty{padding:14px;text-align:center;color:${th.txt}44;font-size:11px;font-style:italic}
-    .pipe-search{padding:8px 13px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:'${th.police}',Georgia,serif;width:200px;background:${th.bg};color:${th.txt};outline:none}
+    .pipe-search{padding:8px 13px;border:1.5px solid #ddd;border-radius:8px;font-size:16px;font-family:'${th.police}',Georgia,serif;width:220px;background:${th.bg};color:${th.txt};outline:none}
     .pipe-search:focus{border-color:${th.c1}}
   </style>
   <div class="kpi-grid" style="margin-bottom:18px">
-    ${kpi("Prospects actifs",st.active.length,th.c1)}
-    ${kpi("Pipeline",fMoney(st.pipeline),th.c2,true)}
-    ${kpi("CA gagné",fMoney(st.wonAmt),"#27ae60",true)}
-    ${kpi("Taux de conv.",st.txConv+"%","#e67e22")}
+    ${kpi("Prospects en cours",st.active.length,th.c1)}
+    ${kpi("Montant en cours",fMoney(st.pipeline),th.c2,true)}
+    ${kpi("Montant gagné",fMoney(st.wonAmt),"#27ae60",true)}
+    ${kpi("Taux de transformation",st.total&&(st.won.length+st.lost.length)?st.txConv+"%":"—","#e67e22")}
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-    <input class="pipe-search" placeholder="🔍 Rechercher un prospect..." value="${pipeSearch}" oninput="pipeSearch=this.value;renderPage()">
-    <div style="display:flex;gap:8px;align-items:center">
-      ${st.urgent>0?`<span style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;font-size:12px;font-weight:700;padding:6px 12px;border-radius:8px">🔔 ${st.urgent} relance${st.urgent>1?"s":""} urgente${st.urgent>1?"s":""}</span>`:""}
+    <input class="pipe-search" type="search" placeholder="🔍 Rechercher un prospect..." value="${pipeEsc(pipeSearch)}" oninput="pipeSearch=this.value;pipeMajTableau()">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${st.urgent>0?`<span style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;font-size:12px;font-weight:700;padding:6px 12px;border-radius:8px">🔔 ${st.urgent} relance${st.urgent>1?"s":""} à faire</span>`:""}
       <button class="btn-add" style="background:${th.c1};color:#fff" onclick="modalProspect()">＋ Nouveau prospect</button>
     </div>
   </div>
-  <div class="pipe-board">
+  <div id="pipe-tableau">${pipeTableauHTML()}</div>`;
+}
+// Le tableau seul : redessiné pendant la recherche sans toucher au champ (le clavier de l'iPad reste ouvert)
+function pipeTableauHTML(){
+  return`<div class="pipe-board">
     ${PIPE_STAGES.map(stage=>{
       const filtered=pipeFilter(PROSPECTS.filter(p=>p.stage===stage.id));
-      const total=filtered.reduce((s,p)=>s+p.amount,0);
+      const total=filtered.reduce((s,p)=>s+(Number(p.amount)||0),0);
       return`<div class="pipe-col">
         <div class="pipe-col-hd">
           <div class="pipe-col-title">
@@ -203,26 +217,27 @@ function renderPipeline(){
           ondragover="event.preventDefault();this.classList.add('pipe-drop-over')"
           ondragleave="this.classList.remove('pipe-drop-over')"
           ondrop="pipeOnDrop(event,'${stage.id}');this.classList.remove('pipe-drop-over')">
-          ${filtered.length===0?`<div class="pipe-empty">Glisser ici</div>`:""}
+          ${filtered.length===0?`<div class="pipe-empty">${pipeSearch.trim()?"Aucun résultat":"Glisser ici"}</div>`:""}
           ${filtered.map(p=>{
-            const isUrg=p.date&&p.date<=TODAY&&p.stage!=="gagne"&&p.stage!=="perdu";
-            return`<div class="pipe-card" draggable="true" data-pid="${p.id}"
-              ondragstart="pipeDragId='${p.id}';this.classList.add('dragging')"
+            const isUrg=p.date&&p.date<=TODAY&&pipeEstOuvert(p);
+            return`<div class="pipe-card" draggable="true" data-pid="${pipeEsc(p.id)}"
+              ondragstart="pipeDragId='${pipeEsc(p.id)}';this.classList.add('dragging')"
               ondragend="this.classList.remove('dragging')"
-              ontouchstart="pipeTouchStart(event,'${p.id}')"
+              ontouchstart="pipeTouchStart(event,'${pipeEsc(p.id)}')"
               ontouchmove="pipeTouchMove(event)"
               ontouchend="pipeTouchEnd(event)"
-              onclick="pipeDetail('${p.id}')">
+              ontouchcancel="pipeTouchEnd(event)"
+              onclick="pipeDetail('${pipeEsc(p.id)}')">
               <div class="pipe-card-acts">
-                <button class="pipe-card-btn" onclick="pipeMoveMenu('${p.id}');event.stopPropagation()" title="Déplacer">↔️</button>
-                <button class="pipe-card-btn" onclick="modalProspect('${p.id}');event.stopPropagation()">✏️</button>
-                <button class="pipe-card-btn del" onclick="delProspect('${p.id}');event.stopPropagation()">🗑️</button>
+                <button class="pipe-card-btn" onclick="pipeMoveMenu('${pipeEsc(p.id)}');event.stopPropagation()" title="Changer d'étape" aria-label="Changer d'étape">↔️</button>
+                <button class="pipe-card-btn" onclick="modalProspect('${pipeEsc(p.id)}');event.stopPropagation()" title="Modifier" aria-label="Modifier">✏️</button>
+                <button class="pipe-card-btn del" onclick="delProspect('${pipeEsc(p.id)}');event.stopPropagation()" title="Supprimer" aria-label="Supprimer">🗑️</button>
               </div>
-              <div class="pipe-card-name">${p.name}</div>
-              ${p.company?`<div class="pipe-card-co">${p.company}</div>`:""}
+              <div class="pipe-card-name">${pipeEsc(p.name)}</div>
+              ${p.company?`<div class="pipe-card-co">${pipeEsc(p.company)}</div>`:""}
               <div class="pipe-card-amt">${p.amount?fMoney(p.amount):"—"}</div>
-              <div class="pipe-card-meta"><span class="pipe-tag pipe-tag-${p.temp}">${{chaud:"🔴 Chaud",tiede:"🟡 Tiède",froid:"🔵 Froid"}[p.temp]}</span></div>
-              ${p.date?`<div class="pipe-card-date" style="${isUrg?"color:#c0392b;font-weight:700":""}">${isUrg?"🔔":"📅"} ${fDate(p.date)}</div>`:""}
+              <div class="pipe-card-meta">${PIPE_TEMPS[p.temp]?`<span class="pipe-tag pipe-tag-${p.temp}">${PIPE_TEMPS[p.temp]}</span>`:""}${p.clientId&&CLIENTS.some(c=>c.id===p.clientId)?`<span class="pipe-tag pipe-tag-client">👤 Client</span>`:""}</div>
+              ${p.date&&pipeEstOuvert(p)?`<div class="pipe-card-date" style="${isUrg?"color:#c0392b;font-weight:700":""}">${isUrg?"🔔":"📅"} ${fDate(p.date)}</div>`:""}
             </div>`;
           }).join("")}
         </div>
@@ -231,30 +246,52 @@ function renderPipeline(){
     }).join("")}
   </div>`;
 }
+function pipeMajTableau(){
+  const el=document.getElementById("pipe-tableau");
+  if(el) el.innerHTML=pipeTableauHTML(); else renderPage();
+}
+// Changement d'étape (glisser, appui long, menu ou formulaire) : un seul endroit
+function pipeChangerEtape(id,stageId){
+  const avant=PROSPECTS.find(p=>p.id===id);
+  if(!avant||!PIPE_STAGES.some(s=>s.id===stageId)) return;
+  if(avant.stage===stageId) return;
+  PROSPECTS=PROSPECTS.map(p=>p.id===id?{...p,stage:stageId,etapeLe:TODAY}:p);
+  saveData();renderPage();
+  if(stageId==="gagne") setTimeout(()=>pipeProposerClient(id),120);
+}
 function pipeOnDrop(e,stageId){
   e.preventDefault();
   if(!pipeDragId) return;
-  PROSPECTS=PROSPECTS.map(p=>p.id===pipeDragId?{...p,stage:stageId}:p);
-  pipeDragId=null;saveData();renderPage();
+  const id=pipeDragId; pipeDragId=null;
+  pipeChangerEtape(id,stageId);
 }
 
-// ── Drag tactile (iPad / mobile) ──────────────────────────────
-let pipeTouchMoved=false;
+// ── Drag tactile (iPad / mobile) : appui long pour déplacer, sinon défilement normal ──
+let pipeTouchMoved=false, pipeTouchX=0, pipeTouchY=0, pipeIgnorerClic=0;
 function pipeTouchStart(e,id){
   pipeDragId=id;
   pipeTouchMoved=false;
+  const t=e.touches[0]; pipeTouchX=t.clientX; pipeTouchY=t.clientY;
   const card=e.currentTarget;
+  clearTimeout(card._holdTimer);
   card._holdTimer=setTimeout(()=>{
+    if(pipeDragId!==id) return;
     card.classList.add("dragging");
-    pipeTouchMoved=true; // active le mode déplacement après appui long
+    pipeTouchMoved=true; // mode déplacement après appui long
     if(navigator.vibrate)navigator.vibrate(30);
-  },180);
+  },300);
 }
 function pipeTouchMove(e){
   if(!pipeDragId)return;
-  if(!pipeTouchMoved)return; // pas encore en mode drag → laisser le scroll
-  e.preventDefault();
   const t=e.touches[0];
+  if(!pipeTouchMoved){
+    // Le doigt bouge avant l'appui long : c'est un défilement, on annule le déplacement
+    if(Math.abs(t.clientX-pipeTouchX)>10||Math.abs(t.clientY-pipeTouchY)>10){
+      clearTimeout(e.currentTarget._holdTimer); pipeDragId=null;
+    }
+    return;
+  }
+  e.preventDefault();
   document.querySelectorAll(".pipe-cards").forEach(c=>c.classList.remove("pipe-drop-over"));
   const el=document.elementFromPoint(t.clientX,t.clientY);
   const col=el&&el.closest?el.closest(".pipe-cards"):null;
@@ -264,24 +301,23 @@ function pipeTouchEnd(e){
   const card=e.currentTarget;
   if(card._holdTimer)clearTimeout(card._holdTimer);
   card.classList.remove("dragging");
-  if(!pipeDragId||!pipeTouchMoved){pipeDragId=null;return;}
-  const t=e.changedTouches[0];
-  const el=document.elementFromPoint(t.clientX,t.clientY);
-  const col=el&&el.closest?el.closest(".pipe-cards"):null;
   document.querySelectorAll(".pipe-cards").forEach(c=>c.classList.remove("pipe-drop-over"));
-  if(col){
-    const stageId=col.getAttribute("data-stage");
-    if(stageId){PROSPECTS=PROSPECTS.map(p=>p.id===pipeDragId?{...p,stage:stageId}:p);saveData();}
-  }
-  pipeDragId=null;pipeTouchMoved=false;renderPage();
+  if(!pipeDragId||!pipeTouchMoved){pipeDragId=null;pipeTouchMoved=false;return;}
+  const id=pipeDragId; pipeDragId=null; pipeTouchMoved=false;
+  pipeIgnorerClic=Date.now(); // le relâchement ne doit pas ouvrir la fiche
+  const t=e.changedTouches[0];
+  const el=t?document.elementFromPoint(t.clientX,t.clientY):null;
+  const col=el&&el.closest?el.closest(".pipe-cards"):null;
+  const stageId=col&&col.getAttribute("data-stage");
+  if(stageId) pipeChangerEtape(id,stageId); else renderPage();
 }
 
 // ── Menu "déplacer vers" (alternative simple au glisser) ──────
 function pipeMoveMenu(id){
   const p=PROSPECTS.find(x=>x.id===id);if(!p)return;
-  showModal("Déplacer "+p.name,
+  showModal("Déplacer "+pipeEsc(p.name),
     `<div style="display:flex;flex-direction:column;gap:8px">
-      ${PIPE_STAGES.map(s=>`<button onclick="pipeMoveTo('${id}','${s.id}')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${p.stage===s.id?s.color:"#e2e8f0"};background:${p.stage===s.id?s.color+"15":"#fff"};cursor:pointer;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;text-align:left;width:100%">
+      ${PIPE_STAGES.map(s=>`<button onclick="pipeMoveTo('${pipeEsc(id)}','${s.id}')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;border:1.5px solid ${p.stage===s.id?s.color:"#e2e8f0"};background:${p.stage===s.id?s.color+"15":"#fff"};cursor:pointer;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;text-align:left;width:100%">
         <span style="width:11px;height:11px;border-radius:50%;background:${s.color};flex-shrink:0"></span>
         <span style="flex:1">${s.label}</span>
         ${p.stage===s.id?`<span style="font-size:12px;color:${s.color}">✓ Actuel</span>`:""}
@@ -291,62 +327,97 @@ function pipeMoveMenu(id){
   );
 }
 function pipeMoveTo(id,stageId){
-  PROSPECTS=PROSPECTS.map(p=>p.id===id?{...p,stage:stageId}:p);
-  saveData();closeModal();renderPage();
+  closeModal();
+  pipeChangerEtape(id,stageId);
+}
+
+// ── Prospect gagné → fiche client ──
+function pipeClientDe(p){ return p&&p.clientId?CLIENTS.find(c=>c.id===p.clientId):null; }
+function pipeProposerClient(id){
+  const p=PROSPECTS.find(x=>x.id===id);
+  if(!p||p.stage!=="gagne"||pipeClientDe(p)) return;
+  if(confirm(`🎉 ${p.name} est gagné !\n\nCréer sa fiche client maintenant, avec ses coordonnées ? Vous pourrez ensuite lui faire un devis ou une facture.`)) pipeCreerClient(id);
+}
+function pipeCreerClient(id){
+  const p=PROSPECTS.find(x=>x.id===id); if(!p) return;
+  const existant=pipeClientDe(p); if(existant){ closeModal(); openClientFiche(existant.id); return; }
+  const cid=uid();
+  CLIENTS.push({id:cid,nom:p.company||p.name,contact:p.company?p.name:"",adresse:"",tel:p.phone||"",email:p.email||"",
+    cat:p.company?"Pro":"Particulier",status:"actif",dernCmd:"",ca:0,dateRelance:"",
+    notes:p.notes||"",prospectId:p.id});
+  PROSPECTS=PROSPECTS.map(x=>x.id===id?{...x,clientId:cid}:x);
+  logActivity("Prospect → client",p.company||p.name);
+  closeModal(); saveData(); renderNav(); openClientFiche(cid);
 }
 function pipeDetail(id){
+  if(Date.now()-pipeIgnorerClic<600) return;
   const p=PROSPECTS.find(x=>x.id===id);if(!p)return;
   const st=PIPE_STAGES.find(s=>s.id===p.stage);
-  showModal(p.name,`
+  const cli=pipeClientDe(p);
+  const lbl=t=>`<div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${t}</div>`;
+  showModal(pipeEsc(p.name),`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Entreprise</div><div style="font-size:14px;color:${TH.txt}">${p.company||"—"}</div></div>
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Montant</div><div style="font-size:20px;font-weight:700;color:${TH.c1}">${p.amount?fMoney(p.amount):"—"}</div></div>
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Email</div><div style="font-size:13px">${p.email?`<a href="mailto:${p.email}" style="color:${TH.c1}">${p.email}</a>`:"—"}</div></div>
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Téléphone</div><div style="font-size:13px">${p.phone?`<a href="tel:${p.phone}" style="color:${TH.c1}">${p.phone}</a>`:"—"}</div></div>
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Étape</div><div style="display:flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:${st?.color};display:inline-block"></span><span style="font-size:13px">${st?.label}</span></div></div>
-      <div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Température</div><span class="pipe-tag pipe-tag-${p.temp}">${{chaud:"🔴 Chaud",tiede:"🟡 Tiède",froid:"🔵 Froid"}[p.temp]}</span></div>
-      ${p.date?`<div><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Relance</div><div style="font-size:13px">📅 ${fDate(p.date)}</div></div>`:""}
+      <div>${lbl("Entreprise")}<div style="font-size:14px;color:${TH.txt}">${pipeEsc(p.company)||"—"}</div></div>
+      <div>${lbl("Montant estimé")}<div style="font-size:20px;font-weight:700;color:${TH.c1}">${p.amount?fMoney(p.amount):"—"}</div></div>
+      <div>${lbl("Email")}<div style="font-size:13px;word-break:break-all">${p.email?`<a href="mailto:${pipeEsc(p.email)}" style="color:${TH.c1}">${pipeEsc(p.email)}</a>`:"—"}</div></div>
+      <div>${lbl("Téléphone")}<div style="font-size:13px">${p.phone?`<a href="tel:${pipeEsc(p.phone.replace(/\s/g,""))}" style="color:${TH.c1}">${pipeEsc(p.phone)}</a>`:"—"}</div></div>
+      <div>${lbl("Étape")}<div style="display:flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:${st?.color};display:inline-block"></span><span style="font-size:13px">${st?.label||"—"}</span></div></div>
+      <div>${lbl("Température")}${PIPE_TEMPS[p.temp]?`<span class="pipe-tag pipe-tag-${p.temp}">${PIPE_TEMPS[p.temp]}</span>`:"—"}</div>
+      ${p.date&&pipeEstOuvert(p)?`<div>${lbl("Relance")}<div style="font-size:13px">📅 ${fDate(p.date)}</div></div>`:""}
+      ${p.creeLe?`<div>${lbl("Ajouté le")}<div style="font-size:13px">${fDate(p.creeLe)}</div></div>`:""}
     </div>
-    ${p.notes?`<div style="padding-top:14px;border-top:1px solid #f1f5f9"><div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Notes</div><div style="font-size:13px;color:${TH.txt};white-space:pre-wrap;line-height:1.6">${p.notes}</div></div>`:""}`,
+    ${p.notes?`<div style="padding-top:14px;border-top:1px solid #f1f5f9">${lbl("Notes")}<div style="font-size:13px;color:${TH.txt};white-space:pre-wrap;line-height:1.6">${pipeEsc(p.notes)}</div></div>`:""}
+    ${cli?`<div class="info-box" style="margin-top:14px">👤 Fiche client : <b>${pipeEsc(cli.nom)}</b></div>`:""}`,
     `<button class="btn-cancel" onclick="closeModal()">Fermer</button>
-     <button class="btn-save" style="background:${TH.c1}" onclick="closeModal();modalProspect('${id}')">✏️ Modifier</button>`
+     ${cli?`<button class="btn-sm" onclick="closeModal();openClientFiche('${pipeEsc(cli.id)}')">👤 Voir la fiche client</button>`
+       :p.stage==="gagne"?`<button class="btn-save" style="background:#15803d" onclick="pipeCreerClient('${pipeEsc(id)}')">👤 Créer la fiche client</button>`:""}
+     <button class="btn-save" style="background:${TH.c1}" onclick="closeModal();modalProspect('${pipeEsc(id)}')">✏️ Modifier</button>`
   );
 }
 function modalProspect(id,defaultStage){
   const p=id?PROSPECTS.find(x=>x.id===id):{id:"",name:"",company:"",email:"",phone:"",amount:0,temp:"tiede",stage:defaultStage||"contact",date:"",notes:""};
+  if(!p) return;
   showModal(id?"Modifier le prospect":"Nouveau prospect",`
     <div class="field-row">
-      <div class="field"><label>Prénom Nom *</label><input id="pp-name" value="${p.name}" placeholder="Marie Dupont"/></div>
-      <div class="field"><label>Entreprise</label><input id="pp-co" value="${p.company}" placeholder="Société..."/></div>
+      <div class="field"><label>Prénom Nom *</label><input id="pp-name" value="${pipeEsc(p.name)}" placeholder="Marie Dupont"/></div>
+      <div class="field"><label>Entreprise</label><input id="pp-co" value="${pipeEsc(p.company)}" placeholder="Société..."/></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Email</label><input type="email" id="pp-email" value="${p.email}"/></div>
-      <div class="field"><label>Téléphone</label><input type="tel" id="pp-phone" value="${p.phone}"/></div>
+      <div class="field"><label>Email</label><input type="email" id="pp-email" value="${pipeEsc(p.email)}"/></div>
+      <div class="field"><label>Téléphone</label><input type="tel" id="pp-phone" value="${pipeEsc(p.phone)}"/></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Montant estimé (€)</label><input type="number" step="any" id="pp-amt" value="${p.amount||""}" placeholder="0"/></div>
+      <div class="field"><label>Montant estimé (€)</label><input type="number" step="any" min="0" id="pp-amt" value="${p.amount||""}" placeholder="0"/></div>
       <div class="field"><label>Température</label><select id="pp-temp">
-        <option value="chaud"${p.temp==="chaud"?" selected":""}>🔴 Chaud</option>
-        <option value="tiede"${p.temp==="tiede"?" selected":""}>🟡 Tiède</option>
-        <option value="froid"${p.temp==="froid"?" selected":""}>🔵 Froid</option>
+        ${Object.entries(PIPE_TEMPS).map(([k,l])=>`<option value="${k}"${p.temp===k?" selected":""}>${l}</option>`).join("")}
       </select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Étape</label><select id="pp-stage">${PIPE_STAGES.map(s=>`<option value="${s.id}"${p.stage===s.id?" selected":""}>${s.label}</option>`).join("")}</select></div>
-      <div class="field"><label>Relance prévue</label><input type="date" id="pp-date" value="${p.date||""}"/></div>
+      <div class="field"><label>Relance prévue</label><input type="date" id="pp-date" value="${pipeEsc(p.date)}"/></div>
     </div>
-    <div class="field"><label>Notes</label><textarea id="pp-notes" style="min-height:72px">${p.notes}</textarea></div>`,
+    <div class="field"><label>Notes</label><textarea id="pp-notes" style="min-height:72px">${pipeEsc(p.notes)}</textarea></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
-     <button class="btn-save" style="background:${TH.c1}" onclick="saveProspect('${id||""}')">Enregistrer</button>`
+     <button class="btn-save" style="background:${TH.c1}" onclick="saveProspect('${pipeEsc(id||"")}')">Enregistrer</button>`
   );
 }
 function saveProspect(id){
   const name=document.getElementById("pp-name").value.trim();
   if(!name){alert("Le nom est obligatoire.");return;}
-  const obj={name,company:document.getElementById("pp-co").value.trim(),email:document.getElementById("pp-email").value.trim(),phone:document.getElementById("pp-phone").value.trim(),amount:parseFloat(document.getElementById("pp-amt").value)||0,temp:document.getElementById("pp-temp").value,stage:document.getElementById("pp-stage").value,date:document.getElementById("pp-date").value,notes:document.getElementById("pp-notes").value.trim()};
-  if(id){PROSPECTS=PROSPECTS.map(p=>p.id===id?{...p,...obj}:p);}else{PROSPECTS.push({...obj,id:"p"+pipeNextId++});}
-  closeModal();renderPage();
+  const obj={name,company:document.getElementById("pp-co").value.trim(),email:document.getElementById("pp-email").value.trim(),phone:document.getElementById("pp-phone").value.trim(),amount:Math.max(0,parseFloat(String(document.getElementById("pp-amt").value).replace(",","."))||0),temp:document.getElementById("pp-temp").value,stage:document.getElementById("pp-stage").value,date:document.getElementById("pp-date").value,notes:document.getElementById("pp-notes").value.trim()};
+  const avant=id?PROSPECTS.find(p=>p.id===id):null;
+  let pid=id;
+  if(avant){
+    if(avant.stage!==obj.stage) obj.etapeLe=TODAY;
+    PROSPECTS=PROSPECTS.map(p=>p.id===id?{...p,...obj}:p);
+  }else{
+    pid="p"+uid(); // identifiant unique (l'ancien compteur pouvait reprendre un numéro déjà utilisé)
+    PROSPECTS.push({...obj,id:pid,creeLe:TODAY,etapeLe:TODAY});
+  }
+  closeModal();saveData();renderPage();
+  if(obj.stage==="gagne"&&(!avant||avant.stage!=="gagne")) setTimeout(()=>pipeProposerClient(pid),120);
 }
-function delProspect(id){confirmDel("Supprimer ce prospect ?",function(){PROSPECTS=PROSPECTS.filter(p=>p.id!==id);renderPage();});}
+function delProspect(id){confirmDel("Supprimer ce prospect ?",function(){PROSPECTS=PROSPECTS.filter(p=>p.id!==id);saveData();renderPage();});}
+window.pipeCreerClient=pipeCreerClient; window.pipeMajTableau=pipeMajTableau;
 
 // ══════════════════════════════════════════════════════════

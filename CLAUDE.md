@@ -33,6 +33,10 @@
 - Vocabulaire par métier : `FICHE_DEF` (valeurs AD Secure, ne pas modifier) + `FICHE_METIER` (surcharges), lu avec `FV(clé)`. `appliquerMetier()` écrit aussi dans TH les libellés lus par les relances (`contratLibelle`, `visiteLibelle`, `contratPrestation`, `contratClauseVisites`, `equipeLibelle`, `visitePrev`) et remplace les catégories du catalogue sécurité par celles du métier.
 - Fonction Edge `relances-auto` : code versionné dans `supabase/functions/relances-auto/`. `shared.js` = copie exacte de `SigMail` + `RelancesCore` de `test/js/06-paiements-relances.js` (préfixe `export`). index.ts l'importe via jsDelivr figé sur un commit : après toute modification de `RelancesCore`, régénérer shared.js, committer, puis redéployer index.ts avec le nouveau hash.
 
+## Pipeline et statistiques
+- Prospect : `{id:"p"+uid(),name,company,email,phone,amount,temp,stage,date(relance),notes,creeLe,etapeLe,clientId?}`. Tout changement d'étape passe par `pipeChangerEtape()` ; passage en « gagné » → proposition de créer la fiche client (`pipeCreerClient`, lien `clientId` / `prospectId`). Textes saisis toujours échappés (`pipeEsc`).
+- Statistiques : CA facturé, clients, marge en HT ; encaissements et graphique mensuel en TTC. Aucun objectif inventé : `getObjectif()` = 0 tant qu'Adeline n'en a pas saisi (bouton « Définir mes objectifs »).
+
 ## Agenda
 - Événement : `{id,type,titre,client,clientId,adresse,date,heure,fin,assignes:[userId],notes}` (+ `contratId`, `visiteNum`, `riId` pour les visites). `evFin(e)` = fin ou début + 1 h (anciens événements).
 - Équipe : `TH.equipe` [{id,nom,couleur}] recopiée depuis `profiles` par un admin à la connexion (`syncEquipe`) — les utilisateurs simples ne peuvent pas lire `profiles` (RLS).

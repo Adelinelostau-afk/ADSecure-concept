@@ -4,84 +4,6 @@
 // ── PILOTAGE : GRAPHIQUES SVG + EXPORT EXCEL ──────────────
 // ══════════════════════════════════════════════════════════
 
-// Calcule le CA encaissé par mois sur les 6 derniers mois (depuis FACTURES payées)
-function caParMois(){
-  const mois=[];
-  const now=new Date();
-  for(let i=5;i>=0;i--){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    const key=d.toISOString().slice(0,7);
-    const label=d.toLocaleDateString("fr-FR",{month:"short"});
-    // CA encaissé du mois = somme des règlements DATÉS dans ce mois
-    const total=FACTURES.filter(f=>facEnCompta(f)&&!["brouillon","annulee"].includes(f.statut))
-      .reduce((s,f)=>s+(f.paiements||[])
-        .filter(p=>p.date&&p.date.slice(0,7)===key)
-        .reduce((a,p)=>a+(p.montant||0),0),0);
-    mois.push({key,label,total});
-  }
-  return mois;
-}
-
-// Graphique en courbe (CA par mois)
-function lineChart(data,color,height){
-  height=height||160;
-  const w=520, h=height, padL=48, padB=28, padT=14, padR=12;
-  const max=Math.max(...data.map(d=>d.total),1);
-  const niceMax=Math.ceil(max/1000)*1000||1000;
-  const cw=w-padL-padR, ch=h-padT-padB;
-  const px=i=>padL+(data.length<=1?cw/2:i*cw/(data.length-1));
-  const py=v=>padT+ch-(v/niceMax)*ch;
-  const pts=data.map((d,i)=>`${px(i)},${py(d.total)}`).join(" ");
-  const area=`${padL},${padT+ch} ${pts} ${px(data.length-1)},${padT+ch}`;
-  // lignes de grille
-  let grid="";
-  for(let g=0;g<=3;g++){
-    const y=padT+ch-(g/3)*ch;
-    const val=Math.round(niceMax*g/3);
-    grid+=`<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#e8e4dc" stroke-width="1"/>`;
-    grid+=`<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="#94a3b8">${val>=1000?(val/1000)+"k":val}</text>`;
-  }
-  return`<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
-    ${grid}
-    <polygon points="${area}" fill="${color}" opacity="0.1"/>
-    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${data.map((d,i)=>`<circle cx="${px(i)}" cy="${py(d.total)}" r="3.5" fill="#fff" stroke="${color}" stroke-width="2"/>
-      <text x="${px(i)}" y="${h-9}" text-anchor="middle" font-size="9" fill="#64748b">${d.label}</text>`).join("")}
-  </svg>`;
-}
-
-// Donut chart (répartition pipeline)
-function donutChart(segments,centerLabel,centerValue){
-  const total=segments.reduce((s,x)=>s+x.value,0)||1;
-  const cx=80,cy=80,r=60,sw=22;
-  let acc=0;
-  const arcs=segments.filter(s=>s.value>0).map(s=>{
-    const frac=s.value/total;
-    const start=acc*2*Math.PI-Math.PI/2;
-    acc+=frac;
-    const end=acc*2*Math.PI-Math.PI/2;
-    const large=frac>0.5?1:0;
-    const x1=cx+r*Math.cos(start),y1=cy+r*Math.sin(start);
-    const x2=cx+r*Math.cos(end),y2=cy+r*Math.sin(end);
-    return`<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${s.color}" stroke-width="${sw}"/>`;
-  }).join("");
-  return`<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
-    <svg viewBox="0 0 160 160" style="width:140px;height:140px;flex-shrink:0">
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f1ede5" stroke-width="${sw}"/>
-      ${arcs}
-      <text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="20" font-weight="700" fill="#1A2118">${centerValue}</text>
-      <text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="9" fill="#94a3b8">${centerLabel}</text>
-    </svg>
-    <div style="flex:1;min-width:120px">
-      ${segments.map(s=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span style="width:11px;height:11px;border-radius:3px;background:${s.color};flex-shrink:0"></span>
-        <span style="font-size:12px;color:#475569;flex:1">${s.label}</span>
-        <span style="font-size:12px;font-weight:700;color:#1A2118">${s.value}</span>
-      </div>`).join("")}
-    </div>
-  </div>`;
-}
-
 // Export Excel (xlsx via SheetJS chargé à la demande)
 function exportExcel(){
   if(typeof XLSX==="undefined"){
@@ -100,18 +22,20 @@ function doExportExcel(){
     // Clients
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(CLIENTS.map(c=>({
       Nom:c.nom,Contact:c.contact||"",Téléphone:c.tel||"",Email:c.email||"",
-      Catégorie:c.cat||"",Statut:c.status||"","CA (€)":c.ca||0,"Dernière commande":c.dernCmd||""
+      Catégorie:c.cat||"",Statut:c.status||"","CA facturé TTC (€)":cliCA(c),"Dernière commande":c.dernCmd||""
     }))),"Clients");
     // Prospects
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(PROSPECTS.map(p=>({
       Nom:p.name,Entreprise:p.company||"",Email:p.email||"",Téléphone:p.phone||"",
-      "Montant (€)":p.amount||0,Température:p.temp||"",Étape:p.stage||"",Relance:p.date||""
+      "Montant (€)":p.amount||0,Température:p.temp||"",Étape:(PIPE_STAGES.find(s=>s.id===p.stage)||{}).label||p.stage||"",Relance:p.date||"",Ajouté:p.creeLe||""
     }))),"Prospects");
     // Factures
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(FACTURES.map(f=>({
-      Numéro:f.num||"",Client:f.client||"","Montant TTC (€)":f.ttc||0,Statut:f.statut||"",Échéance:f.ech||""
+      Numéro:f.num||"",Client:f.client||"",Date:facDate(f)||"",Échéance:f.ech||"",
+      "HT (€)":Math.round(facHT(f)*100)/100,"TVA (€)":Math.round(facTVA(f)*100)/100,"Total TTC (€)":Math.round(facTTC(f)*100)/100,
+      "Réglé (€)":Math.round(facPaye(f)*100)/100,"Reste dû (€)":facReste(f),Statut:facStatutReel(f)||f.statut||""
     }))),"Factures");
-    // Stock
+    // Factures fournisseurs
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(FACFOURN.map(f=>({
       "N° interne":f.num,"N° fournisseur":f.numFour||"",Fournisseur:f.four||"",Catégorie:f.cat||"",Bon:f.bcRef||"",
       Date:f.date||"",Échéance:f.ech||"","HT (€)":ffHT(f),"TVA (€)":ffTVA(f),"Total TTC (€)":ffTTC(f),"Réglé (€)":ffPaye(f),"Reste dû (€)":ffReste(f),
@@ -131,7 +55,7 @@ function doExportExcel(){
 }
 
 // Objectif annuel (stocké dans TH pour persistance via la synchro existante)
-function getObjectif(){ return (TH && TH.objectifAnnuel) ? TH.objectifAnnuel : 50000; }
+function getObjectif(){ return Number(TH && TH.objectifAnnuel)||0; } // 0 = aucun objectif saisi (avant : 50 000 € inventés)
 // ════════════════════════════════════════════════════════
 // ── STATISTIQUES (période, objectifs mensuels) ──────────
 // ════════════════════════════════════════════════════════
@@ -208,7 +132,7 @@ function chartMensuel(rows,th){
   for(let i=0;i<=4;i++){const v=niceMax*i/4,yy=y(v);g+=`<line x1="${padL}" y1="${yy}" x2="${w-padR}" y2="${yy}" stroke="#ece8df"/><text x="${padL-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#94a3b8">${fmtK(v)}</text>`;}
   rows.forEach((r,i)=>{
     const cx=padL+slot*i+slot/2, cur=r.k===getToday().slice(0,7);
-    const tip=`${moisLabel(r.k)} ${r.k.slice(0,4)} — facturé ${fMoney(r.fac)} · encaissé ${fMoney(r.enc)} · objectif ${fMoney(r.obj)}`;
+    const tip=`${moisLabel(r.k)} ${r.k.slice(0,4)} — facturé ${fMoney(r.fac)} · encaissé ${fMoney(r.enc)}${r.obj>0?` · objectif ${fMoney(r.obj)}`:""} (TTC)`;
     g+=`<g><title>${tip}</title>
       <rect x="${cx-bw-1}" y="${y(r.fac)}" width="${bw}" height="${padT+ch-y(r.fac)}" rx="3" fill="${th.c1}" opacity="0.35"/>
       <rect x="${cx+1}" y="${y(r.enc)}" width="${bw}" height="${padT+ch-y(r.enc)}" rx="3" fill="${r.enc>=r.obj&&r.obj>0?"#15803d":th.c1}"/>
@@ -219,8 +143,8 @@ function chartMensuel(rows,th){
   <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:11.5px;color:#64748b;margin-top:6px">
     <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${th.c1};opacity:.35;margin-right:5px"></span>Facturé</span>
     <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${th.c1};margin-right:5px"></span>Encaissé</span>
-    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#15803d;margin-right:5px"></span>Objectif atteint</span>
-    <span><span style="display:inline-block;width:14px;height:3px;background:#b45309;vertical-align:middle;margin-right:5px"></span>Objectif</span>
+    ${rows.some(r=>r.obj>0)?`<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#15803d;margin-right:5px"></span>Objectif atteint</span>
+    <span><span style="display:inline-block;width:14px;height:3px;background:#b45309;vertical-align:middle;margin-right:5px"></span>Objectif</span>`:""}
   </div>`;
 }
 
@@ -249,6 +173,7 @@ function renderStats(){
   // ── Chiffre d'affaires ──
   const facPeriode=facVivantes.filter(f=>dansPeriode(facDate(f)));
   const caFacture=facPeriode.reduce((s,f)=>s+facTTC(f),0);
+  const caFactureHT=facPeriode.reduce((s,f)=>s+facHT(f),0);
   const paiementsPeriode=facVivantes.flatMap(f=>(f.paiements||[]).map(p=>({...p,f}))).filter(p=>dansPeriode(p.date));
   const caEncaisse=paiementsPeriode.reduce((s,p)=>s+(p.montant||0),0);
   const resteAEncaisser=facVivantes.filter(f=>facStatutReel(f)!=="payee").reduce((s,f)=>s+facReste(f),0);
@@ -271,11 +196,12 @@ function renderStats(){
   const objAn=objectifAnnee(anObj);
   const encAn=facVivantes.reduce((s,f)=>s+(f.paiements||[]).filter(p=>p.date&&p.date.slice(0,4)===anObj).reduce((a,p)=>a+(p.montant||0),0),0);
   const objAnADate=anObj<anCourant?objAn:(anObj>anCourant?0:rows.filter(r=>r.k.slice(0,4)===anObj&&r.k<moisCourant).reduce((s,r)=>s+r.obj,0)+rowCourant.obj*jour/nbJours);
+  const aObj=rows.some(r=>r.obj>0);
   const moisAtteints=rows.filter(r=>r.k<=moisCourant&&r.obj>0&&r.enc>=r.obj).length, moisEcoules=rows.filter(r=>r.k<=moisCourant&&r.obj>0).length;
   // ── Clients ──
   const caParClient={};
   facPeriode.forEach(f=>{const cli=CLIENTS.find(c=>c.id===f.clientId)||CLIENTS.find(c=>c.nom===f.client);const key=cli?cli.id:(f.client||"?");
-    caParClient[key]=caParClient[key]||{nom:cli?cli.nom:(f.client||"—"),cat:cli?cli.cat:"",ca:0,nb:0}; caParClient[key].ca+=facTTC(f); caParClient[key].nb++;});
+    caParClient[key]=caParClient[key]||{nom:cli?cli.nom:(f.client||"—"),cat:cli?cli.cat:"",ca:0,nb:0}; caParClient[key].ca+=facHT(f); caParClient[key].nb++;});
   const top=Object.values(caParClient).sort((a,b)=>b.ca-a.ca).slice(0,5);
   const maxTop=Math.max(1,...top.map(c=>c.ca));
   const parCat={};
@@ -289,7 +215,9 @@ function renderStats(){
   const refuses=devisP.filter(d=>d.statut==="refuse");
   const attente=devisP.filter(d=>d.statut==="envoye");
   const expires=attente.filter(d=>d.validite&&d.validite<T);
-  const txSignature=devisP.length?Math.round(signes.length/Math.max(1,signes.length+refuses.length+attente.length)*100):0;
+  const baseDevis=signes.length+refuses.length+attente.length; // devis envoyés au client
+  const brouillons=devisP.filter(d=>d.statut==="brouillon").length;
+  const txSignature=baseDevis?Math.round(signes.length/baseDevis*100):0;
   const montantSignes=signes.reduce((s,d)=>s+devisTTC(d),0), montantAttente=attente.reduce((s,d)=>s+devisTTC(d),0);
   const panierMoyen=signes.length?montantSignes/signes.length:0;
   // ── Paiements ──
@@ -299,11 +227,11 @@ function renderStats(){
   const modes={}; paiementsPeriode.forEach(p=>{const m=p.mode||"Autre";modes[m]=(modes[m]||0)+(p.montant||0);});
   // ── Charges ──
   const ffP=FACFOURN.filter(f=>f.statut!=="brouillon"&&dansPeriode(f.date||f.ech));
-  const charges=ffP.reduce((s,f)=>s+ffTTC(f),0), chargesAPayer=FACFOURN.filter(f=>f.statut!=="brouillon").reduce((s,f)=>s+ffReste(f),0);
-  const marge=caFacture-charges;
+  const charges=ffP.reduce((s,f)=>s+ffHT(f),0), chargesAPayer=FACFOURN.filter(f=>f.statut!=="brouillon").reduce((s,f)=>s+ffReste(f),0);
+  const marge=caFactureHT-charges; // marge hors taxes : la TVA n'est ni un produit ni une charge
   // ── Activité ──
   const evP=EVENTS.filter(e=>dansPeriode(e.date));
-  const TYPES_EV={rdv:["RDV clients",th.c2],chantier:["Chantiers","#b08d57"],maintenance:["Maintenances","#15803d"],prospection:["Prospection",th.c1],autre:["Autres","#94a3b8"]};
+  const TYPES_EV={rdv:["RDV clients",th.c2],chantier:["Chantiers","#b08d57"],maintenance:[FV("visitesPl"),"#15803d"],prospection:["Prospection",th.c1],autre:["Autres","#94a3b8"]};
   const evParType={}; evP.forEach(e=>{const k=TYPES_EV[e.type]?e.type:"autre";evParType[k]=(evParType[k]||0)+1;});
   const ps=pipeStats();
   const valeurStock=STOCK.reduce((s,p)=>s+p.qte*(p.prixRevient||p.prixAchat||p.prix||0),0);
@@ -328,8 +256,8 @@ function renderStats(){
     ${doublonsFac||sansDate?`<div class="info-box" style="margin-bottom:14px;border-color:#fcd34d;background:#fffbeb;color:#92400e">⚠️ ${[doublonsFac?`${doublonsFac} numéro(s) de facture en double`:"",sansDate?`${sansDate} facture(s) sans date d'émission (date estimée à 30 jours avant l'échéance pour ces statistiques — complétez-la dans la facture)`:""].filter(Boolean).join(" · ")}.</div>`:""}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px">
-      ${tuile("CA facturé "+libPeriode,fMoney(caFacture),`${facPeriode.length} facture(s)`)}
-      ${tuile("CA encaissé "+libPeriode,fMoney(caEncaisse),`${paiementsPeriode.length} règlement(s)`,"#15803d")}
+      ${tuile("CA facturé HT "+libPeriode,fMoney(caFactureHT),`${fMoney(caFacture)} TTC · ${facPeriode.length} facture(s)`)}
+      ${tuile("Encaissé TTC "+libPeriode,fMoney(caEncaisse),`${paiementsPeriode.length} règlement(s)`,"#15803d")}
       ${tuile("Reste à encaisser",fMoney(resteAEncaisser),facRetard.length?`dont ${fMoney(montantRetard)} en retard (${facRetard.length})`:"aucun retard",facRetard.length?"#991b1b":"#b45309")}
       ${tuile(FV("recurrent"),fMoney(recurrentHT)+" HT/mois",`${contrats.length} contrat(s) actif(s) · ${fMoney(recurrentHT*12)} HT/an`,th.c2)}
     </div>
@@ -337,9 +265,10 @@ function renderStats(){
     <!-- Objectif du mois + année -->
     <div class="two-col" style="margin-bottom:16px">
       <div class="section-card" style="background:${th.card}">
-        <div class="section-head"><div><div class="section-title" style="color:${th.txt}">🎯 Objectif de ${moisLabel(moisCourant)} ${anCourant}</div><div class="section-sub">CA encaissé du mois</div></div>
-          <button class="btn-sm" onclick="modalObjectifs()">Modifier les objectifs</button></div>
+        <div class="section-head"><div><div class="section-title" style="color:${th.txt}">🎯 Objectif de ${moisLabel(moisCourant)} ${anCourant}</div><div class="section-sub">Encaissé TTC du mois</div></div>
+          <button class="btn-sm" onclick="modalObjectifs()">${objAn>0||rowCourant.obj>0?"Modifier les objectifs":"Définir"}</button></div>
         <div style="padding:18px">
+          ${rowCourant.obj>0?`
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
             <span style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;color:${couleurPct(pctMois)}">${fMoney(rowCourant.enc)}</span>
             <span style="font-size:13px;color:#64748b">/ ${fMoney(rowCourant.obj)}</span>
@@ -351,62 +280,69 @@ function renderStats(){
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b">
             <span style="font-weight:700;color:${couleurPct(pctMois)}">${pctMois}% atteint</span>
             <span>${rowCourant.enc>=rowCourant.obj?"🎉 Objectif atteint !":`Reste ${fMoney(rowCourant.obj-rowCourant.enc)} · ${nbJours-jour} jour(s)`}</span>
-          </div>
+          </div>`:`
+          <div style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;color:${th.c1};margin-bottom:6px">${fMoney(rowCourant.enc)}</div>
+          <div style="font-size:13px;color:#64748b;margin-bottom:12px">encaissés ce mois-ci · aucun objectif défini</div>
+          <button class="btn-sm" onclick="modalObjectifs()" style="border-color:${th.c1};color:${th.c1};font-weight:700">🎯 Définir mes objectifs</button>`}
         </div>
       </div>
       <div class="section-card" style="background:${th.card}">
-        <div class="section-head"><div><div class="section-title" style="color:${th.txt}">📅 Objectif ${anObj}</div><div class="section-sub">${moisEcoules?`${moisAtteints} mois sur ${moisEcoules} atteints`:"Année à venir"}</div></div></div>
+        <div class="section-head"><div><div class="section-title" style="color:${th.txt}">📅 Objectif ${anObj}</div><div class="section-sub">${objAn>0?(moisEcoules?`${moisAtteints} mois sur ${moisEcoules} atteints`:"Année à venir"):"Encaissé de l'année"}</div></div></div>
         <div style="padding:18px">
+          ${objAn>0?`
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
             <span style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;color:${th.c1}">${fMoney(encAn)}</span>
             <span style="font-size:13px;color:#64748b">/ ${fMoney(objAn)}</span>
           </div>
           <div style="position:relative;height:14px;background:#f1ede5;border-radius:8px;overflow:hidden;margin-bottom:8px">
-            <div style="height:100%;width:${Math.min(100,objAn?Math.round(encAn/objAn*100):0)}%;background:linear-gradient(90deg,${th.c1},${th.c2});border-radius:8px"></div>
-            ${anObj===anCourant&&objAn?`<div title="Objectif cumulé à date" style="position:absolute;top:0;bottom:0;left:${Math.min(100,Math.round(objAnADate/objAn*100))}%;width:2px;background:#37301F;opacity:.5"></div>`:""}
+            <div style="height:100%;width:${Math.min(100,Math.round(encAn/objAn*100))}%;background:linear-gradient(90deg,${th.c1},${th.c2});border-radius:8px"></div>
+            ${anObj===anCourant?`<div title="Objectif cumulé à date" style="position:absolute;top:0;bottom:0;left:${Math.min(100,Math.round(objAnADate/objAn*100))}%;width:2px;background:#37301F;opacity:.5"></div>`:""}
           </div>
           <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748b">
-            <span style="font-weight:700;color:${th.c1}">${objAn?Math.round(encAn/objAn*100):0}% de l'objectif annuel</span>
+            <span style="font-weight:700;color:${th.c1}">${Math.round(encAn/objAn*100)}% de l'objectif annuel</span>
             ${anObj===anCourant?`<span style="font-weight:700;color:${encAn>=objAnADate?"#15803d":"#991b1b"}">${encAn>=objAnADate?"En avance":"En retard"} de ${fMoney(Math.abs(encAn-objAnADate))}</span>`:""}
-          </div>
+          </div>`:`
+          <div style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;color:${th.c1};margin-bottom:6px">${fMoney(encAn)}</div>
+          <div style="font-size:13px;color:#64748b">encaissés en ${anObj} (TTC)</div>`}
         </div>
       </div>
     </div>
 
     <!-- Mois par mois -->
     <div class="section-card" style="background:${th.card};margin-bottom:16px">
-      <div class="section-head"><div><div class="section-title" style="color:${th.txt}">💰 Mois par mois ${statsAnnee==="tout"?"(12 derniers mois)":statsAnnee}</div><div class="section-sub">Facturé, encaissé et objectif · touchez une barre pour le détail</div></div></div>
+      <div class="section-head"><div><div class="section-title" style="color:${th.txt}">💰 Mois par mois ${statsAnnee==="tout"?"(12 derniers mois)":statsAnnee}</div><div class="section-sub">Montants TTC · facturé, encaissé${aObj?" et objectif":""} · touchez une barre pour le détail</div></div></div>
       <div style="padding:14px 16px 16px">${chartMensuel(rows,th)}</div>
       <div style="overflow-x:auto;padding:0 16px 16px"><table style="font-size:12px">
-        <thead><tr><th>Mois</th><th style="text-align:right">Facturé</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Objectif</th><th style="text-align:right">Écart</th></tr></thead>
-        <tbody>${rows.filter(r=>r.fac||r.enc||r.k<=moisCourant).map(r=>{const e=r.enc-r.obj;return`<tr style="${r.k===moisCourant?`background:${th.c1}0d;font-weight:700`:""}"><td style="text-transform:capitalize">${moisLabel(r.k)} ${r.k.slice(0,4)}</td><td style="text-align:right">${fMoney(r.fac)}</td><td style="text-align:right">${fMoney(r.enc)}</td><td style="text-align:right;color:#64748b">${fMoney(r.obj)}</td><td style="text-align:right;font-weight:700;color:${e>=0?"#15803d":"#991b1b"}">${r.k>moisCourant?"—":(e>=0?"+":"")+fMoney(e)}</td></tr>`;}).join("")}</tbody>
+        <thead><tr><th>Mois</th><th style="text-align:right">Facturé</th><th style="text-align:right">Encaissé</th>${aObj?`<th style="text-align:right">Objectif</th><th style="text-align:right">Écart</th>`:""}</tr></thead>
+        <tbody>${rows.filter(r=>r.fac||r.enc||r.k<=moisCourant).map(r=>{const e=r.enc-r.obj;return`<tr style="${r.k===moisCourant?`background:${th.c1}0d;font-weight:700`:""}"><td style="text-transform:capitalize">${moisLabel(r.k)} ${r.k.slice(0,4)}</td><td style="text-align:right">${fMoney(r.fac)}</td><td style="text-align:right">${fMoney(r.enc)}</td>${aObj?`<td style="text-align:right;color:#64748b">${r.obj>0?fMoney(r.obj):"—"}</td><td style="text-align:right;font-weight:700;color:${e>=0?"#15803d":"#991b1b"}">${r.k>moisCourant||!r.obj?"—":(e>=0?"+":"")+fMoney(e)}</td>`:""}</tr>`;}).join("")}</tbody>
       </table></div>
     </div>
 
     <div class="two-col" style="margin-bottom:16px">
-      ${statCard("🏆 Meilleurs clients "+libPeriode,top.length?top.map((c,i)=>`<div style="margin-bottom:11px">
+      ${statCard("🏆 Meilleurs clients "+libPeriode+" (HT)",top.length?top.map((c,i)=>`<div style="margin-bottom:11px">
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:600;color:${th.txt}">${i+1}. ${esc(c.nom)} <span style="color:#94a3b8;font-weight:400">· ${c.nb} fact.</span></span><span style="font-weight:700;color:${th.c1};white-space:nowrap">${fMoney(c.ca)}</span></div>
           <div style="height:7px;background:#f1ede5;border-radius:5px;overflow:hidden"><div style="height:100%;width:${c.ca/maxTop*100}%;background:${th.c1};border-radius:5px"></div></div></div>`).join("")
         +`<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${mini("Clients",CLIENTS.length)}${mini("Nouveaux "+(statsAnnee==="tout"?"":statsAnnee),nouveauxClients,"#15803d")}${mini("Facturés",clientsFactures,th.c2)}</div>`
         :`<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px">Aucune facture ${libPeriode}</div>`,th)}
 
-      ${statCard("🧩 CA par type de client",Object.keys(parCat).length?Object.entries(parCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>bar(caFacture?v/caFacture*100:0,k==="Pro"?th.c1:k==="VIP"?"#b08d57":th.c2,k,`${fMoney(v)} · ${caFacture?Math.round(v/caFacture*100):0}%`)).join("")
+      ${statCard("🧩 CA par type de client (HT)",Object.keys(parCat).length?Object.entries(parCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>bar(caFactureHT?v/caFactureHT*100:0,k==="Pro"?th.c1:k==="VIP"?"#b08d57":th.c2,k,`${fMoney(v)} · ${caFactureHT?Math.round(v/caFactureHT*100):0}%`)).join("")
         +`<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr;gap:8px">${mini("Délai moyen de paiement",delaiMoyen===null?"—":delaiMoyen+" j",delaiMoyen!==null&&delaiMoyen>30?"#991b1b":"#15803d")}${(()=>{const m=Object.entries(modes).sort((a,b)=>b[1]-a[1])[0];return mini("Mode de règlement principal",m?`${m[0]} ${caEncaisse?Math.round(m[1]/caEncaisse*100):0} %`:"—",th.c1);})()}</div>`
         :`<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px">Aucune facture ${libPeriode}</div>`,th)}
     </div>
 
     <div class="two-col" style="margin-bottom:16px">
       ${statCard("📋 Devis "+libPeriode,`
-        ${bar(devisP.length?signes.length/devisP.length*100:0,"#15803d","Signés",`${signes.length} · ${fMoney(montantSignes)}`)}
-        ${bar(devisP.length?attente.length/devisP.length*100:0,th.c1,"En attente de réponse",`${attente.length} · ${fMoney(montantAttente)}`)}
-        ${bar(devisP.length?refuses.length/devisP.length*100:0,"#991b1b","Refusés",refuses.length)}
+        ${bar(baseDevis?signes.length/baseDevis*100:0,"#15803d","Signés",`${signes.length} · ${fMoney(montantSignes)}`)}
+        ${bar(baseDevis?attente.length/baseDevis*100:0,th.c1,"En attente de réponse",`${attente.length} · ${fMoney(montantAttente)}`)}
+        ${bar(baseDevis?refuses.length/baseDevis*100:0,"#991b1b","Refusés",refuses.length)}
+        ${brouillons?`<div style="font-size:12px;color:#94a3b8;margin:-4px 0 10px">✏️ ${brouillons} brouillon(s) pas encore envoyé(s)</div>`:""}
         ${expires.length?`<div style="font-size:12px;color:#b45309;margin:-4px 0 10px">⏳ ${expires.length} devis en attente ont dépassé leur date de validité — à relancer</div>`:""}
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${mini("Devis émis",devisP.length)}${mini("Taux de signature",txSignature+"%","#15803d")}${mini("Panier moyen",fMoney(panierMoyen),th.c2)}</div>`,th)}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${mini("Devis envoyés",baseDevis)}${mini("Taux de signature",baseDevis?txSignature+"%":"—","#15803d")}${mini("Panier moyen TTC",fMoney(panierMoyen),th.c2)}</div>`,th)}
 
-      ${statCard("📈 Rentabilité "+libPeriode,`
-        ${bar(100,th.c1,"CA facturé",fMoney(caFacture))}
-        ${bar(caFacture?charges/caFacture*100:0,"#b45309","Charges fournisseurs",fMoney(charges))}
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr;gap:8px">${mini("Marge",fMoney(marge)+(caFacture?` · ${Math.round(marge/caFacture*100)}%`:""),marge>=0?"#15803d":"#991b1b")}${mini("Fournisseurs à régler",fMoney(chargesAPayer),"#b45309")}</div>
+      ${statCard("📈 Rentabilité "+libPeriode+" (HT)",`
+        ${bar(caFactureHT?100:0,th.c1,"CA facturé HT",fMoney(caFactureHT))}
+        ${bar(caFactureHT?charges/caFactureHT*100:0,"#b45309","Achats fournisseurs HT",fMoney(charges))}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr;gap:8px">${mini("Marge HT",fMoney(marge)+(caFactureHT?` · ${Math.round(marge/caFactureHT*100)}%`:""),marge>=0?"#15803d":"#991b1b")}${mini("Fournisseurs à régler (TTC)",fMoney(chargesAPayer),"#b45309")}</div>
         ${FACFOURN.length?"":`<div style="font-size:11px;color:#94a3b8;margin-top:10px">Saisissez vos factures fournisseurs pour obtenir une marge réelle.</div>`}`,th)}
     </div>
 
@@ -416,7 +352,9 @@ function renderStats(){
 
       ${statCard("🎯 Prospects & stock",`
         ${bar(ps.total?ps.active.length/ps.total*100:0,th.c1,"Prospects en cours",`${ps.active.length} · ${fMoney(ps.pipeline)}`)}
-        ${bar(ps.total?ps.won.length/ps.total*100:0,"#15803d","Gagnés",ps.won.length)}
+        ${bar(ps.total?ps.won.length/ps.total*100:0,"#15803d","Gagnés",`${ps.won.length} · ${fMoney(ps.wonAmt)}`)}
+        ${bar(ps.total?ps.lost.length/ps.total*100:0,"#991b1b","Perdus",ps.lost.length)}
+        ${ps.won.length+ps.lost.length?`<div style="font-size:12px;color:#64748b;margin:-4px 0 10px">Taux de transformation : <b>${ps.txConv} %</b> des prospects conclus</div>`:""}
         ${ps.urgent?`<div style="font-size:12px;color:#b45309;margin:-4px 0 10px">🔔 ${ps.urgent} prospect(s) à relancer aujourd'hui</div>`:""}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1fr;gap:8px">${mini("Valeur du stock",fMoney(valeurStock))}${mini("Références en alerte",stockAlertes,stockAlertes?"#991b1b":"#15803d")}</div>`,th)}
     </div>
