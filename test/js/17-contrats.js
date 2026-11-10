@@ -792,7 +792,7 @@ function genererContratWord(clientId){
 function buildContratDocx(m){
   const {Document,Paragraph,TextRun,HeadingLevel,AlignmentType,Table,TableRow,TableCell,WidthType,ShadingType,BorderStyle,Header,Footer,PageNumber,LevelFormat,convertInchesToTwip}=docx;
   const articles=CONTRAT_TEXTE(m);
-  const NAVY=(TH.txt||"#37301F").replace("#",""),BLUE=(TH.c1||"#3286A0").replace("#",""),BEIGE=(TH.sand||"#DED3BC").replace("#","");
+  const NAVY=(TH.txt||"#37301F").replace("#",""),BLUE=(TH.c1||"#3286A0").replace("#",""),BEIGE=(TH.sand||"#F3EDE1").replace("#","");
   const borders=()=>({top:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"},bottom:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"},left:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"},right:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"},insideHorizontal:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"},insideVertical:{style:BorderStyle.SINGLE,size:2,color:"CCCCCC"}});
   const heading=(text,pageBreakBefore)=>new Paragraph({heading:HeadingLevel.HEADING_1,pageBreakBefore:!!pageBreakBefore,spacing:{before:300,after:150},children:[new TextRun({text,bold:true,color:BLUE})]});
   const p=(text)=>new Paragraph({spacing:{after:120,line:300},children:[new TextRun({text})]});

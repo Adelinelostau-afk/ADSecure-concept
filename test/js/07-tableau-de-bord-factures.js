@@ -211,12 +211,12 @@ function dbwHero(){
   return `<div class="db-hero" style="background:linear-gradient(135deg,${TH.sidebar} 0%,${TH.c1} 55%,${TH.c2} 100%)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative;z-index:1">
         <div>
-          <div style="font-size:10.5px;color:rgba(222,211,188,0.7);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;font-weight:600">${new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+          <div style="font-size:10.5px;color:rgba(243,237,225,0.7);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;font-weight:600">${new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           <div style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:-0.01em">Bonjour${(typeof currentUser!=="undefined"&&currentUser&&currentUser.nom)?" "+currentUser.nom.split(" ")[0]:""} 👋</div>
-          <div style="font-size:13px;color:rgba(222,211,188,0.75);margin-top:5px">${facR.length>0||stAl.length>0?`${facR.length+stAl.length} point(s) à traiter.`:"Tout est en ordre aujourd'hui."}</div>
+          <div style="font-size:13px;color:rgba(243,237,225,0.75);margin-top:5px">${facR.length>0||stAl.length>0?`${facR.length+stAl.length} point(s) à traiter.`:"Tout est en ordre aujourd'hui."}</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:10px;color:rgba(222,211,188,0.6);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;font-weight:600">CA à encaisser</div>
+          <div style="font-size:10px;color:rgba(243,237,225,0.6);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;font-weight:600">CA à encaisser</div>
           <div style="font-family:'Lora',Georgia,serif;font-size:28px;font-weight:700">${fMoney(ca)}</div>
         </div>
       </div>
