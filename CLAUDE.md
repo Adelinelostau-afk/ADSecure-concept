@@ -23,6 +23,11 @@
 - La liste `FOURNISSEURS` est désormais enregistrée avec les données (avant : jamais sauvegardée, reconstituée au chargement depuis COMMANDES/FACFOURN).
 - Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
 
+## CGV jointes aux devis
+- `devisDocHTML()` ajoute après le devis la mention d'acceptation et les pages CGV (`cgvHTML()`, 2 colonnes) : impression, aperçu et copie figée de la signature en ligne.
+- PDF envoyé par e-mail : la partie `.cgv` est retirée avant html2canvas et les CGV sont écrites en texte par `ajouterCgvPdf()` (jsPDF, police Helvetica = Windows-1252), sinon les lignes seraient coupées entre deux pages.
+- Texte : `TH.cgvPerso` (Réglages › Entreprise) ; à défaut, pour AD Secure, `CGV_ADS` dans `test/js/00-cgv.js` (repères « # » article, « ## » encadré/annexe, « - » puce). `TH.cgvActif===false` désactive. Mettre à jour `CGV_ADS` + `CGV_ADS_VERSION` à chaque nouvelle version des CGV.
+
 ## Supabase
 - Projet « AD Secure » (`tcszogqlvqpxrtdirkto`, région UE). Isolation entre entreprises par RLS + trigger `profiles_guard` (pas d'auto-promotion, pas de changement de tenant).
 - Le rôle `anon` n'a aucun droit sur les tables ; les pages publiques passent par des fonctions Edge.

@@ -274,6 +274,87 @@ async function imprimerCertificatSignature(id){
   w.document.open();w.document.write(html);w.document.close();
 }
 
+// ══════════════════════════════════════════════════════════
+// ── CONDITIONS GÉNÉRALES DE VENTE JOINTES AUX DEVIS ──
+// ══════════════════════════════════════════════════════════
+// Texte : TH.cgvPerso (saisi dans Réglages) ou, pour AD Secure, CGV_ADS (00-cgv.js).
+// TH.cgvActif===false désactive l'ajout. Repères du texte : « # » article, « ## » encadré/annexe, « - » puce.
+function cgvTexte(){
+  if(TH.cgvActif===false) return "";
+  const perso=(TH.cgvPerso||"").trim();
+  return perso||(isADS(TH)&&typeof CGV_ADS==="string"?CGV_ADS:"");
+}
+function cgvBlocs(t){
+  return String(t||"").split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    if(l.startsWith("## ")) return {k:"h2",t:l.slice(3)};
+    if(l.startsWith("# ")) return {k:"h1",t:l.slice(2)};
+    if(l.startsWith("- ")) return {k:"li",t:l.slice(2)};
+    const m=l.match(/^(\d+\.\d+)\s+([\s\S]*)$/);
+    return m?{k:"p",n:m[1],t:m[2]}:{k:"p",t:l};
+  });
+}
+// Pages HTML des CGV (impression, aperçu et copie présentée à la signature en ligne)
+function cgvHTML(){
+  const t=cgvTexte(); if(!t) return "";
+  const e=sgE;
+  return `<div class="cgv" style="page-break-before:always;break-before:page;padding-top:6px">
+    <div style="border-bottom:2px solid ${TH.c1};padding-bottom:8px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-end">
+      <div style="font-size:16px;font-weight:800;color:${TH.c1};letter-spacing:.5px">CONDITIONS GÉNÉRALES DE VENTE</div>
+      <div style="font-size:10px;color:#64748b">${e((TH.nom+" "+(TH.sous||"")).trim())}</div></div>
+    <div style="column-count:2;column-gap:22px;font-size:8.5px;line-height:1.45;color:#1A2118;text-align:justify">
+      ${cgvBlocs(t).map(b=>b.k==="h1"?`<div style="font-weight:800;color:${TH.c1};font-size:9.5px;margin:8px 0 3px;break-after:avoid;page-break-after:avoid">${e(b.t)}</div>`
+        :b.k==="h2"?`<div style="font-weight:800;font-size:9.5px;margin:10px 0 4px;padding:3px 6px;background:#F7F4ED;border-left:3px solid ${TH.c1};break-after:avoid;page-break-after:avoid">${e(b.t)}</div>`
+        :b.k==="li"?`<div style="margin:0 0 3px 10px;text-indent:-8px">– ${e(b.t)}</div>`
+        :`<p style="margin:0 0 4px">${b.n?`<b>${e(b.n)}</b> `:""}${e(b.t)}</p>`).join("")}
+    </div></div>`;
+}
+// Pages PDF des CGV, écrites en texte (html2canvas couperait les lignes entre deux pages)
+function ajouterCgvPdf(pdf){
+  const t0=cgvTexte(); if(!t0) return;
+  // Police PDF intégrée = jeu de caractères Windows-1252 : tout autre caractère (emoji…) est remplacé
+  const CP="€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+  const t=t0.replace(/[\u00A0\u202F]/g," ").replace(/[\u2010\u2011\u2212]/g,"-").replace(/./gu,c=>c.charCodeAt(0)<256||CP.includes(c)?c:"?");
+  const rgb=h=>{h=String(h||"#475569").replace("#","");if(h.length===3)h=h.split("").map(c=>c+c).join("");return [0,2,4].map(i=>parseInt(h.substr(i,2),16)||0);};
+  const C1=rgb(TH.c1), TXT=[26,33,24];
+  const M=14, GAP=7, colW=(210-2*M-GAP)/2, HAUT0=25, BAS=297-14, LH=3.3;
+  let col=0, y=HAUT0;
+  const nouvellePage=()=>{
+    pdf.addPage();
+    pdf.setFont("helvetica","bold"); pdf.setFontSize(12); pdf.setTextColor(...C1);
+    pdf.text("CONDITIONS GÉNÉRALES DE VENTE",M,15);
+    pdf.setFont("helvetica","normal"); pdf.setFontSize(8); pdf.setTextColor(100,116,139);
+    pdf.text((TH.nom+" "+(TH.sous||"")).trim(),210-M,15,{align:"right"});
+    pdf.setDrawColor(...C1); pdf.setLineWidth(0.5); pdf.line(M,18.5,210-M,18.5);
+    col=0; y=HAUT0;
+  };
+  const x=()=>M+col*(colW+GAP);
+  const place=h=>{ if(y+h>BAS){ if(col===0){col=1;y=HAUT0;} else nouvellePage(); } };
+  nouvellePage();
+  for(const b of cgvBlocs(t)){
+    if(b.k==="h1"||b.k==="h2"){
+      pdf.setFont("helvetica","bold"); pdf.setFontSize(8.5);
+      const l=pdf.splitTextToSize(b.t,colW-(b.k==="h2"?3:0));
+      y+=1.6; place(l.length*3.6+LH*2);   // un titre n'est jamais seul en bas de colonne
+      if(b.k==="h2"){ pdf.setFillColor(...C1); pdf.rect(x(),y+0.2,0.8,l.length*3.6+0.6,"F"); }
+      pdf.setTextColor(...(b.k==="h1"?C1:TXT)); pdf.text(l,x()+(b.k==="h2"?2.5:0),y+3);
+      y+=l.length*3.6+0.8; continue;
+    }
+    pdf.setFontSize(7.5); pdf.setTextColor(...TXT); pdf.setFont("helvetica","normal");
+    const retrait=b.k==="li"?3:0, avant=b.k==="li"?"– ":(b.n?b.n+" ":"");
+    const l=pdf.splitTextToSize(avant+b.t,colW-retrait);
+    l.forEach((ligne,i)=>{
+      place(LH);
+      const xx=x()+(b.k==="li"&&i>0?retrait:0);
+      if(i===0&&b.n&&ligne.startsWith(b.n+" ")){
+        pdf.setFont("helvetica","bold"); pdf.text(b.n,xx,y+2.6);
+        const w=pdf.getTextWidth(b.n+" "); pdf.setFont("helvetica","normal"); pdf.text(ligne.slice(b.n.length+1),xx+w,y+2.6);
+      }else pdf.text(ligne,xx,y+2.6);
+      y+=LH;
+    });
+    y+=1.2;
+  }
+}
+
 function devisDocHTML(d,impression){
   const cli=CLIENTS.find(c=>c.id===d.clientId);
   const ht=devisHT(d),mtva=devisTVA(d),ttc=devisTTC(d);
@@ -354,6 +435,7 @@ function devisDocHTML(d,impression){
       </table>
     </div>
     ${d.notes?`<div class="notes"><div class="lbl">Notes</div>${d.notes.replace(/</g,"&lt;")}</div>`:""}
+    ${cgvTexte()?`<div style="font-size:11px;color:#475569;margin-top:20px">Le présent devis est soumis aux conditions générales de vente jointes (pages suivantes). Sa signature vaut acceptation de celles-ci.</div>`:""}
     <div class="sign">
       ${d.validationSansSign&&!d.signatureElec?`<div class="sign-box"><div class="lbl">Accord du client</div><div style="font-size:12px;font-weight:700;color:#1A2118;margin-top:4px">Validé sans signature</div><div style="font-size:11px;color:#475569;margin-top:2px">${vssMotifLbl(d.validationSansSign.motif)} — le ${dtFr(d.validationSansSign.date)}</div>${d.validationSansSign.note?`<div style="font-size:10px;color:#64748b;margin-top:3px;white-space:pre-line">${String(d.validationSansSign.note).replace(/</g,"&lt;")}</div>`:""}</div>`:`<div class="sign-box"><div class="lbl">Date et signature client</div><div style="font-size:11px;color:#94a3b8">« Bon pour accord »</div></div>`}
       <div class="sign-box"><div class="lbl">${TH.nom} ${TH.sous}</div></div>
@@ -363,6 +445,7 @@ function devisDocHTML(d,impression){
       ${TH.nom} ${TH.sous}${TH.siret?" · SIRET : "+TH.siret:""} · Ce devis ne vaut engagement qu'après acceptation signée.<br/>
       ${TH.mentionsLegales||""}
     </div>
+    ${cgvHTML()}
     ${impression?`<script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>`:""}
   </body></html>`;
   return doc;
@@ -427,6 +510,7 @@ async function htmlVersPdfBase64(html,opts){
     // Mise en page et dessin doivent utiliser la même police : sinon html2canvas dessine
     // chaque mot avec Inter (chargée dans l'appli) à des positions calculées avec Arial,
     // et les mots se chevauchent (« fixationdes », « contac@ »…).
+    if(opts.cgv){ const c=doc.querySelector(".cgv"); if(c) c.remove(); }
     await pdfChargerPolices(doc);
     await Promise.all([...doc.images].map(im=>im.complete?null:new Promise(ok=>{im.onload=im.onerror=ok;})));
     const hauteur=Math.max(doc.documentElement.scrollHeight,doc.body.scrollHeight);
@@ -456,6 +540,7 @@ async function htmlVersPdfBase64(html,opts){
     }else{
       ajouter(await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur}));
     }
+    if(opts.cgv) ajouterCgvPdf(pdf);
     return pdf.output("datauristring").split(",")[1];
   }finally{ ifr.remove(); }
 }
@@ -463,7 +548,7 @@ async function htmlVersPdfBase64(html,opts){
 // Types de documents envoyables : devis et factures
 const DOC_ENVOI={
   devis:{
-    titre:"le devis", liste:()=>DEVIS, html:d=>devisDocHTML(d,false), apercu:id=>genererDevisPDF(id),
+    titre:"le devis", cgv:true, liste:()=>DEVIS, html:d=>devisDocHTML(d,false), apercu:id=>genererDevisPDF(id),
     client:d=>CLIENTS.find(c=>c.id===d.clientId), ttc:d=>devisTTC(d), prefixe:"Devis",
     cleModele:"modeleMailDevis", reperes:["contact","entreprise","numero","montant","validite","signature"],
     modele:"Bonjour {contact},\n\nVeuillez trouver ci-joint notre devis {numero} d'un montant de {montant} TTC, valable jusqu'au {validite}.\n\nPour l'accepter, il vous suffit de nous le retourner signé avec la mention « Bon pour accord », ou de répondre simplement à cet e-mail.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{signature}",
@@ -573,7 +658,7 @@ async function envoyerDoc(type,id){
       const ajout=`\n\n✍️ Pour accepter ce devis, vous pouvez le signer en ligne en quelques secondes :\n${url}`;
       texte=i>=0?texte.slice(0,i)+ajout+texte.slice(i):texte+ajout;
     }
-    const pdf=await htmlVersPdfBase64(T.html(d),{pages:T.pages});
+    const pdf=await htmlVersPdfBase64(T.html(d),{pages:T.pages,cgv:T.cgv});
     btn.textContent="⟳ Envoi…";
     const nomFichier=`${T.prefixe} ${docNum(T,d)}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
     const destReel=AD_TEST?(currentUser.email||""):to;
