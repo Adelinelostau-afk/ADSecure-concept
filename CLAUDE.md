@@ -24,8 +24,8 @@
 - Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
 
 ## CGV jointes aux devis
-- `devisDocHTML()` ajoute après le devis la mention d'acceptation et les pages CGV (`cgvHTML()`, 2 colonnes) : impression, aperçu et copie figée de la signature en ligne.
-- PDF envoyé par e-mail : la partie `.cgv` est retirée avant html2canvas et les CGV sont écrites en texte par `ajouterCgvPdf()` (jsPDF, police Helvetica = Windows-1252), sinon les lignes seraient coupées entre deux pages.
+- E-mail d'un devis : deux pièces jointes, le devis et un PDF séparé des CGV (`cgvPdfBase64()`, écrit en texte par `ajouterCgvPdf()` avec jsPDF, police Helvetica = Windows-1252). Case « Joindre les CGV » dans la fenêtre d'envoi. La fonction Edge `relances-auto` accepte `piecesJointes` (liste) en plus de `pieceJointe`.
+- Le devis porte la mention d'acceptation des CGV. Ses pages CGV (`cgvHTML()`) ne sont ajoutées que dans la copie figée de la signature en ligne (`devisDocHTML(d,false,true)`), pas à l'impression ni dans le PDF du devis. `imprimerCgv()` (Réglages › Entreprise) imprime les CGV seules.
 - Texte : `TH.cgvPerso` (Réglages › Entreprise) ; à défaut, pour AD Secure, `CGV_ADS` dans `test/js/00-cgv.js` (repères « # » article, « ## » encadré/annexe, « - » puce). `TH.cgvActif===false` désactive. Mettre à jour `CGV_ADS` + `CGV_ADS_VERSION` à chaque nouvelle version des CGV.
 
 ## Supabase

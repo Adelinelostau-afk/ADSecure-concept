@@ -618,7 +618,7 @@ function renderEntreprisePanel(){
         <div class="p-field"><label class="field-label">SIRET</label><input type="text" value="${TH.siret||''}" placeholder="000 000 000 00000" oninput="TH.siret=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">N&deg; TVA intracom.</label><input type="text" value="${TH.tvaIntra||''}" placeholder="FR00000000000" oninput="TH.tvaIntra=this.value;saveData()"/></div>
         <div class="p-field"><label class="field-label">Mentions l&eacute;gales PDF</label><input type="text" value="${TH.mentionsLegales||''}" placeholder="Auto-entrepreneur &middot; Dispen..." oninput="TH.mentionsLegales=this.value;saveData()"/></div>
-    ${reglageTitre("Conditions générales de vente","Jointes automatiquement à la suite de chaque devis")}
+    ${reglageTitre("Conditions générales de vente","Jointes en PDF séparé aux devis envoyés par e-mail")}
         ${renderCgvReglage()}
 
     ${reglageTitre("Comptabilité")}
@@ -635,7 +635,8 @@ function renderCgvReglage(){
   const val=perso||(defaut?CGV_ADS:"");
   const esc=v=>String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;");
   return `<div class="p-field">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${TH.cgvActif===false?"":"checked"} onchange="TH.cgvActif=this.checked;saveData()"/> Joindre les CGV aux devis (PDF, impression, signature en ligne)</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" ${TH.cgvActif===false?"":"checked"} onchange="TH.cgvActif=this.checked;saveData()"/> Joindre les CGV aux devis envoyés par e-mail (PDF séparé) et à la signature en ligne</label>
+      <button class="btn-sm" style="margin-bottom:8px" onclick="imprimerCgv()">🖨️ Imprimer les CGV</button>
       <textarea id="cgv-texte" rows="10" style="width:100%;font-size:11.5px;line-height:1.45;font-family:inherit" placeholder="Collez ici vos conditions générales de vente. Une ligne commençant par « # » devient un titre d'article, « ## » un encadré ou une annexe, « - » une puce." oninput="TH.cgvPerso=this.value;saveData()">${esc(val)}</textarea>
       <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">${defaut&&!perso?`Version en place : CGV AD Secure Concept v${CGV_ADS_VERSION}.`:defaut?`Texte modifié. <a href="#" onclick="event.preventDefault();if(confirm('Remettre les CGV officielles v${CGV_ADS_VERSION} ?')){TH.cgvPerso='';saveData();renderPanel();}">Revenir à la version officielle</a>`:"Une ligne commençant par « # » devient un titre d'article, « ## » un encadré, « - » une puce."}</div>
     </div>`;

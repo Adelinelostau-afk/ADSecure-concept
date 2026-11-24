@@ -19,7 +19,7 @@ async function creerLienSignature(devisId){
   const d=DEVIS.find(x=>x.id===devisId);if(!d) throw new Error("Devis introuvable");
   if(!currentUser||!currentUser.tenant_id) throw new Error("Session invalide, reconnectez-vous.");
   const cli=CLIENTS.find(c=>c.id===d.clientId);
-  const html=devisDocHTML(d,false);
+  const html=devisDocHTML(d,false,true);   // le client signe en ligne en voyant les CGV
   const hash=await sha256Hex(html);
   const {data:exist}=await sbClient.from("devis_signatures").select(SIGN_COLS).eq("devis_id",d.id).eq("statut","en_attente");
   const meme=(exist||[]).find(r=>r.snapshot_hash===hash&&(!r.expires_at||new Date(r.expires_at)>new Date()));
@@ -309,7 +309,7 @@ function cgvHTML(){
     </div></div>`;
 }
 // Pages PDF des CGV, écrites en texte (html2canvas couperait les lignes entre deux pages)
-function ajouterCgvPdf(pdf){
+function ajouterCgvPdf(pdf,pdfNeuf){
   const t0=cgvTexte(); if(!t0) return;
   // Police PDF intégrée = jeu de caractères Windows-1252 : tout autre caractère (emoji…) est remplacé
   const CP="€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
@@ -318,8 +318,9 @@ function ajouterCgvPdf(pdf){
   const C1=rgb(TH.c1), TXT=[26,33,24];
   const M=14, GAP=7, colW=(210-2*M-GAP)/2, HAUT0=25, BAS=297-14, LH=3.3;
   let col=0, y=HAUT0;
+  let premiere=!!pdfNeuf;
   const nouvellePage=()=>{
-    pdf.addPage();
+    if(premiere) premiere=false; else pdf.addPage();
     pdf.setFont("helvetica","bold"); pdf.setFontSize(12); pdf.setTextColor(...C1);
     pdf.text("CONDITIONS GÉNÉRALES DE VENTE",M,15);
     pdf.setFont("helvetica","normal"); pdf.setFontSize(8); pdf.setTextColor(100,116,139);
@@ -355,7 +356,26 @@ function ajouterCgvPdf(pdf){
   }
 }
 
-function devisDocHTML(d,impression){
+// Impression des CGV seules (à remettre au client avec un devis papier)
+function imprimerCgv(){
+  const c=cgvHTML(); if(!c){alert("Aucune condition générale de vente n'est renseignée.");return;}
+  const w=window.open("","_blank"); if(!w){alert("Veuillez autoriser les fenêtres pop-up.");return;}
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>${sgE(cgvNomFichier().replace(/\.pdf$/,""))}</title><style>@page{size:A4;margin:12mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:'Helvetica Neue',Arial,sans-serif;margin:0}.cgv{page-break-before:auto!important;break-before:auto!important}</style></head><body>${c}<script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script></body></html>`);
+  w.document.close();
+}
+window.imprimerCgv=imprimerCgv;
+// PDF des CGV seules (pièce jointe de l'e-mail du devis), base64 sans en-tête data:
+async function cgvPdfBase64(){
+  if(!cgvTexte()) return "";
+  await chargerLibsPDF();
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
+  ajouterCgvPdf(pdf,true);
+  return pdf.output("datauristring").split(",")[1];
+}
+function cgvNomFichier(){ return `Conditions générales de vente ${(TH.nom+" "+(TH.sous||"")).trim()}.pdf`.replace(/[\\/:*?"<>|]/g,"-"); }
+
+function devisDocHTML(d,impression,avecCgv){
   const cli=CLIENTS.find(c=>c.id===d.clientId);
   const ht=devisHT(d),mtva=devisTVA(d),ttc=devisTTC(d);
   const logoSrc=thLogo();
@@ -435,7 +455,7 @@ function devisDocHTML(d,impression){
       </table>
     </div>
     ${d.notes?`<div class="notes"><div class="lbl">Notes</div>${d.notes.replace(/</g,"&lt;")}</div>`:""}
-    ${cgvTexte()?`<div style="font-size:11px;color:#475569;margin-top:20px">Le présent devis est soumis aux conditions générales de vente jointes (pages suivantes). Sa signature vaut acceptation de celles-ci.</div>`:""}
+    ${cgvTexte()?`<div style="font-size:11px;color:#475569;margin-top:20px">Le présent devis est soumis à nos conditions générales de vente, remises avec celui-ci. Sa signature vaut acceptation de celles-ci.</div>`:""}
     <div class="sign">
       ${d.validationSansSign&&!d.signatureElec?`<div class="sign-box"><div class="lbl">Accord du client</div><div style="font-size:12px;font-weight:700;color:#1A2118;margin-top:4px">Validé sans signature</div><div style="font-size:11px;color:#475569;margin-top:2px">${vssMotifLbl(d.validationSansSign.motif)} — le ${dtFr(d.validationSansSign.date)}</div>${d.validationSansSign.note?`<div style="font-size:10px;color:#64748b;margin-top:3px;white-space:pre-line">${String(d.validationSansSign.note).replace(/</g,"&lt;")}</div>`:""}</div>`:`<div class="sign-box"><div class="lbl">Date et signature client</div><div style="font-size:11px;color:#94a3b8">« Bon pour accord »</div></div>`}
       <div class="sign-box"><div class="lbl">${TH.nom} ${TH.sous}</div></div>
@@ -445,7 +465,7 @@ function devisDocHTML(d,impression){
       ${TH.nom} ${TH.sous}${TH.siret?" · SIRET : "+TH.siret:""} · Ce devis ne vaut engagement qu'après acceptation signée.<br/>
       ${TH.mentionsLegales||""}
     </div>
-    ${cgvHTML()}
+    ${avecCgv?cgvHTML():""}
     ${impression?`<script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>`:""}
   </body></html>`;
   return doc;
@@ -510,7 +530,6 @@ async function htmlVersPdfBase64(html,opts){
     // Mise en page et dessin doivent utiliser la même police : sinon html2canvas dessine
     // chaque mot avec Inter (chargée dans l'appli) à des positions calculées avec Arial,
     // et les mots se chevauchent (« fixationdes », « contac@ »…).
-    if(opts.cgv){ const c=doc.querySelector(".cgv"); if(c) c.remove(); }
     await pdfChargerPolices(doc);
     await Promise.all([...doc.images].map(im=>im.complete?null:new Promise(ok=>{im.onload=im.onerror=ok;})));
     const hauteur=Math.max(doc.documentElement.scrollHeight,doc.body.scrollHeight);
@@ -540,7 +559,6 @@ async function htmlVersPdfBase64(html,opts){
     }else{
       ajouter(await html2canvas(doc.body,{scale:2,useCORS:true,backgroundColor:"#ffffff",width:LARG,windowWidth:LARG,height:hauteur,windowHeight:hauteur}));
     }
-    if(opts.cgv) ajouterCgvPdf(pdf);
     return pdf.output("datauristring").split(",")[1];
   }finally{ ifr.remove(); }
 }
@@ -632,6 +650,7 @@ function modalEnvoiDoc(type,id){
     <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(fichier)}</b> joint automatiquement
       <button class="btn-sm" onclick="DOC_ENVOI['${type}'].apercu('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
     ${type==="devis"&&!d.signatureElec&&!["refuse","transforme"].includes(d.statut)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ev-signer" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> ✍️ Ajouter un lien pour signer le devis en ligne</label>`:""}
+    ${type==="devis"&&cgvTexte()?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ev-cgv" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> 📎 Joindre les conditions générales de vente (PDF séparé)</label>`:""}
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer"><input type="checkbox" id="ev-copie" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> M'envoyer une copie</label>
     <div id="ev-msg-err" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:13px"></div>`,
     `<button class="btn-cancel" onclick="closeModal()">Annuler</button>
@@ -658,12 +677,15 @@ async function envoyerDoc(type,id){
       const ajout=`\n\n✍️ Pour accepter ce devis, vous pouvez le signer en ligne en quelques secondes :\n${url}`;
       texte=i>=0?texte.slice(0,i)+ajout+texte.slice(i):texte+ajout;
     }
-    const pdf=await htmlVersPdfBase64(T.html(d),{pages:T.pages,cgv:T.cgv});
+    const pdf=await htmlVersPdfBase64(T.html(d),{pages:T.pages});
+    const pjs=[];
     btn.textContent="⟳ Envoi…";
     const nomFichier=`${T.prefixe} ${docNum(T,d)}.pdf`.replace(/[\\/:*?"<>|]/g,"-");
+    pjs.push({nom:nomFichier,contenu:pdf});
+    if(T.cgv&&(document.getElementById("ev-cgv")||{checked:true}).checked){ const c=await cgvPdfBase64(); if(c) pjs.push({nom:cgvNomFichier(),contenu:c}); }
     const destReel=AD_TEST?(currentUser.email||""):to;
     const sujetReel=AD_TEST?"[TEST — destiné à "+to+"] "+sujet:sujet;
-    const {data,error}=await sbClient.functions.invoke("relances-auto",{body:{action:"email",to:destReel,subject:sujetReel,text:texte,copie:AD_TEST?false:copie,pieceJointe:{nom:nomFichier,contenu:pdf}}});
+    const {data,error}=await sbClient.functions.invoke("relances-auto",{body:{action:"email",to:destReel,subject:sujetReel,text:texte,copie:AD_TEST?false:copie,piecesJointes:pjs}});
     let msg=data&&data.error;
     if(error){ try{ const b=await error.context.json(); msg=b.error||error.message; }catch(_){ msg=error.message; } }
     if(msg) return erreur(msg);

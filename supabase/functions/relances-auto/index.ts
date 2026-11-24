@@ -120,8 +120,9 @@ Deno.serve(async (req) => {
   if (body.action === "email") {
     const to = String(body.to || "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json({ error: "Adresse du destinataire invalide" }, 400);
-    const pj = body.pieceJointe;
-    if (pj && String(pj.contenu || "").length > 14_000_000) return json({ error: "Pièce jointe trop lourde (10 Mo maximum)" }, 400);
+    // Pièces jointes PDF : « pieceJointe » (une seule) ou « piecesJointes » (liste, ex. devis + CGV)
+    const pjs = (Array.isArray(body.piecesJointes) ? body.piecesJointes : (body.pieceJointe ? [body.pieceJointe] : [])).slice(0, 5);
+    if (pjs.reduce((n, p) => n + String(p?.contenu || "").length, 0) > 14_000_000) return json({ error: "Pièces jointes trop lourdes (10 Mo maximum)" }, 400);
     const { data: row } = await sb.from("app_data").select("data").eq("tenant_id", prof.tenant_id).maybeSingle();
     const TH = row?.data?.TH || {};
     const texte = String(body.text || "").slice(0, 20000);
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
         subject: String(body.subject || "Document").slice(0, 200),
         text: versTexte(texte, TH, u.user.id),
         html: versHtml(texte, TH, u.user.id),
-        attachments: pj ? [{ filename: String(pj.nom || "document.pdf").slice(0, 120), content: String(pj.contenu), encoding: "base64", contentType: "application/pdf" }] : [],
+        attachments: pjs.map((p) => ({ filename: String(p.nom || "document.pdf").slice(0, 120), content: String(p.contenu || ""), encoding: "base64", contentType: "application/pdf" })),
       });
       return json({ ok: true, destinataire: to });
     } catch (e) {
