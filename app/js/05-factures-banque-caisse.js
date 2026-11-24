@@ -314,7 +314,7 @@ function modalCaisseMvt(id,sens){
       ${m&&m.piece?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:13px"><span>📎 ${cEsc(m.piece.nom)}</span>
         <button type="button" class="btn-sm" onclick="caisseVoirPiece('${m.id}')">Voir</button></div>`:""}
       <input type="file" id="cm-file" accept="application/pdf,image/*"/></div>
-    ${m&&m.comptageId?`<div style="font-size:12px;color:#8a6d3b;background:#DED3BC55;padding:8px 12px;border-radius:9px">Ajustement créé automatiquement par un comptage de caisse.</div>`:""}
+    ${m&&m.comptageId?`<div style="font-size:12px;color:#8a6d3b;background:#F3EDE1;padding:8px 12px;border-radius:9px">Ajustement créé automatiquement par un comptage de caisse.</div>`:""}
     <div id="cm-msg" style="display:none;margin-top:12px;padding:10px 12px;border-radius:9px;font-size:13px"></div>`,
     `${m?`<button class="btn-cancel" style="color:#991b1b;border-color:#fecaca" onclick="supprCaisseMvt('${m.id}')">🗑 Supprimer</button>`:""}
      <button class="btn-cancel" onclick="closeModal()">Annuler</button>

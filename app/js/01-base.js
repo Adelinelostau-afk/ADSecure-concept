@@ -502,7 +502,7 @@ let RUBS=[
 ];
 const DEF_TH={...TH};
 // Profil AD Secure Concept : complète les réglages de ce compte s'il en manque (aucun effet sur les autres entreprises)
-const ADS_TH={metier:"securite",nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#DED3BC",site:"index.html",
+const ADS_TH={metier:"securite",nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"#299AC3",sidebar:"#1A2118",bg:"#F7F4ED",card:"#FFFFFF",txt:"#1A2118",sand:"#F3EDE1",site:"index.html",
   contratSiege:"Quartier Bellay, 97228 Sainte-Luce, Martinique",contratSiren:"108 443 326",contratRepresentant:"Adeline LOSTAU",contratQualite:"Présidente",contratTribunal:"Fort-de-France",horaires:"Lun, mar, jeu 8h30–16h · mer, ven 8h30–13h30",
   sigMail:{actif:true,nom:"Adeline LOSTAU",poste:"Présidente",societe:"AD Secure Concept",tel1:"0696 43 95 84",tel2:"0696 34 23 04",email:"contact@adsecureconcept.fr",site:"www.adsecureconcept.fr",adresse:"Quartier Bellay, 97228 Sainte-Luce, Martinique",logoUrl:"https://www.adsecureconcept.fr/logo.png",slogan:"Vidéosurveillance · IA"},
   sigMailUsers:{"8d0d5004-4a33-46da-8b0f-76e97be2894c":{nom:"Daniel VICTORNI",poste:"Directeur",tel1:"0696 43 95 84",tel2:"",email:""},
@@ -510,6 +510,8 @@ const ADS_TH={metier:"securite",nom:"AD Secure",sous:"Concept",c1:"#3286A0",c2:"
 function isADS(t){return /^AD\s*Secure/i.test((t&&t.nom)||"");}
 function mergeTH(saved){
   const t=Object.assign({},DEF_TH,isADS(saved)?ADS_TH:{},saved);
+  // Charte nov. 2026 : beige éclairci (#DED3BC → #F3EDE1)
+  if(/^#ded3bc$/i.test(t.sand||"")) t.sand="#F3EDE1";
   // Ancienne accroche de signature : « Domotique » retiré
   if(t.sigMail&&t.sigMail.slogan==="Vidéosurveillance · IA · Domotique") t.sigMail={...t.sigMail,slogan:"Vidéosurveillance · IA"};
   return t;
@@ -952,7 +954,7 @@ let selectedClientId=null;
 let planningFilter="tous";
 
 const PRESETS=[
-  {label:"🌊 Ocean",  c1:"#3286A0",c2:"#299AC3",sb:"#2a2318",bg:"#f5f1ea",card:"#fefcf8",txt:"#37301F",sand:"#DED3BC"},
+  {label:"🌊 Ocean",  c1:"#3286A0",c2:"#299AC3",sb:"#2a2318",bg:"#f5f1ea",card:"#fefcf8",txt:"#37301F",sand:"#F3EDE1"},
   {label:"🌙 Nuit",   c1:"#6366f1",c2:"#818cf8",sb:"#0f0f1a",bg:"#f0f0fa",card:"#fafaff",txt:"#1e1b4b",sand:"#e0e7ff"},
   {label:"🌿 Forêt",  c1:"#2d6a4f",c2:"#40916c",sb:"#1b2f20",bg:"#f0f5f1",card:"#f8faf8",txt:"#1b2f20",sand:"#d8f3dc"},
   {label:"🟤 Terre",  c1:"#9c6b30",c2:"#c8862b",sb:"#2c1a0e",bg:"#faf5ee",card:"#fefcf8",txt:"#2c1a0e",sand:"#f0e0c8"},
@@ -972,7 +974,7 @@ const ST_DEVIS={
   accepte:  ["#dcfce7","#15803d","Accepté"],
   refuse:   ["#fee2e2","#991b1b","Refusé"],
   expire:   ["#f1f5f9","#94a3b8","Expiré"],
-  transforme:["#DED3BC66","#8a6d3b","Transformé en BC"],
+  transforme:["#F3EDE1","#8a6d3b","Transformé en BC"],
 };
 const ST_FAC={brouillon:["#f1f5f9","#64748b","Brouillon"],envoyee:["#e8f4f8","#3286A0","Envoyée"],partiel:["#fef9c3","#a16207","Acompte"],payee:["#dcfce7","#15803d","Payée"],retard:["#fee2e2","#991b1b","En retard"],annulee:["#f1f5f9","#94a3b8","Annulée"]};
 const PR_C={haute:"#991b1b",moyenne:"#b45309",basse:"#15803d"};

@@ -21,6 +21,7 @@
 - 21/10/2026 : app.html = test.html (nouvel agenda jour/semaine/mois/liste + équipe, vocabulaire par métier `FICHE_DEF`/`FICHE_METIER`). Contrat, courrier de reconduction et dossier de remise AD Secure comparés au rendu : identiques. `RelancesCore` de app.html = shared.js déployé.
 - 21/10/2026 : app.html + app/ = version de test (outils/publier.py) : passage au code découpé par rubrique, pipeline et statistiques revus. Contrat, courrier de reconduction et dossier de remise AD Secure comparés : identiques ; seules les pages Pipeline et Statistiques diffèrent de l'ancienne production.
 - 24/11/2026 : CGV jointes aux devis mises en production seules (00-cgv.js, 11-signature-envoi.js, 18-pages-reglages-demarrage.js recopiés ; app.html charge 00-cgv.js). Les autres écarts test/app (01-base, 05, 07, 17, style.css : charte beige…) restent en test, non validés.
+- 24/11/2026 : app.html + app/ = version de test (outils/publier.py) : charte beige #F3EDE1 validée (seuls écarts restants : couleur beige dans 01, 05, 07, 17, style.css). Test et production identiques.
 - La liste `FOURNISSEURS` est désormais enregistrée avec les données (avant : jamais sauvegardée, reconstituée au chargement depuis COMMANDES/FACFOURN).
 - Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
 
