@@ -90,7 +90,8 @@ function regenDocument(histId){
 }
 
 function checkLogin(){
-  const saved=sessionStorage.getItem("gp_user");
+  // Gardé dans localStorage : sur iPad, l'appli de l'écran d'accueil perd sessionStorage dès qu'iOS la ferme en arrière-plan
+  const saved=localStorage.getItem("gp_user")||sessionStorage.getItem("gp_user");
   if(saved){currentUser=JSON.parse(saved);isLoggedIn=true;loadWidgets();return true;}
   return false;
 }
@@ -198,7 +199,7 @@ async function doLogin(){
   currentUser={id:profile.id,email,nom:profile.nom,role:profile.role,tenant_id:profile.tenant_id};
   CURRENT_TENANT=profile.tenants||null;
   isLoggedIn=true;
-  sessionStorage.setItem("gp_user",JSON.stringify(currentUser));
+  localStorage.setItem("gp_user",JSON.stringify(currentUser));
   logActivity("Connexion","Connexion réussie");
   document.getElementById("login-screen").style.display="none";
   document.getElementById("app-screen").style.display="flex";
@@ -218,7 +219,7 @@ async function doLogout(){
   await sbClient.auth.signOut();
   viderDonnees();
   isLoggedIn=false;currentUser=null;CURRENT_TENANT=null;DBWIDGETS=[];dbEditMode=false;
-  sessionStorage.removeItem("gp_user");
+  localStorage.removeItem("gp_user");sessionStorage.removeItem("gp_user");
   document.getElementById("app-screen").style.display="none";
   document.getElementById("login-screen").style.display="flex";
   document.getElementById("login-input").value="";
@@ -1122,7 +1123,7 @@ function goBack(){
 // ── Modal ─────────────────────────────────────────────────────────────────────
 function showModal(title,body,footer){
   document.getElementById("modal-container").innerHTML=`
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-overlay" onclick="if(event.target===this&&!this.querySelector('input:not([type=hidden]),textarea,select'))closeModal()">
       <div class="modal">
         <div class="modal-head"><div class="modal-title">${title}</div><button class="modal-close" onclick="closeModal()">✕</button></div>
         <div class="modal-body">${body}</div>

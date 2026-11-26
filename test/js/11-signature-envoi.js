@@ -39,6 +39,15 @@ async function creerLienSignature(devisId){
 }
 
 // Récupère les signatures faites par les clients et met les devis à jour
+// Vrai si l'utilisateur est en train de saisir quelque chose (champ actif ou fenêtre ouverte)
+function saisieEnCours(){
+  const a=document.activeElement;
+  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+  if(a&&a.isContentEditable) return true;
+  return !!document.querySelector(".modal-overlay");
+}
+let signRenduEnAttente=false;
+document.addEventListener("focusout",()=>{setTimeout(()=>{if(signRenduEnAttente&&!saisieEnCours()){signRenduEnAttente=false;renderPage();renderNav();}},300);});
 async function syncSignaturesDevis(force){
   if(!currentUser||!currentUser.tenant_id||signSyncEnCours) return;
   if(!force&&Date.now()-signSyncTs<60000) return;
@@ -58,11 +67,12 @@ async function syncSignaturesDevis(force){
       signes.push(d);
     });
     if(signes.length){
-      saveData();renderPage();renderNav();
+      saveData();
+      if(saisieEnCours()) signRenduEnAttente=true; else {renderPage();renderNav();}
       setTimeout(()=>alert(`✍️ ${signes.length>1?signes.length+" devis signés":"Devis signé"} en ligne :\n\n`+signes.map(d=>{const c=CLIENTS.find(x=>x.id===d.clientId);return `• ${d.num}${c?" — "+c.nom:""} (signé par ${d.signatureElec.nom})`;}).join("\n")+"\n\nIl"+(signes.length>1?"s sont passés":" est passé")+" en « Accepté »."),300);
     }else if(["devis","client-fiche"].includes(currentPage)){
       // mise à jour des pastilles « consulté / en attente »
-      const c=document.getElementById("content");if(c&&!document.querySelector(".modal-overlay"))renderPage();
+      const c=document.getElementById("content");if(c&&!saisieEnCours())renderPage();
     }
   }catch(e){}finally{signSyncEnCours=false;}
 }
