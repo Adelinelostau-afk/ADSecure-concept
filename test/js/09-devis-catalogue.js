@@ -460,11 +460,28 @@ function editerProduit(id,retour){
       ${champ("Fournisseur",`<input id="pr-four" value="${v.four.replace(/"/g,"&quot;")}" placeholder="Nom du fournisseur"/>`)}
     </div>
     ${champ("Photo (URL)",`<input id="pr-photo" value="${v.photo.replace(/"/g,"&quot;")}" placeholder="https://…"/>`)}`;
+  const titre=p?"✏️ Modifier le produit":"📦 Nouveau produit";
+  // Depuis un devis / une facture / un BC : la fiche s'ouvre PAR-DESSUS le document, qui reste intact derrière
+  if(_prodRetour==="picker"){
+    fermerFicheProduitDessus();
+    const div=document.createElement("div");
+    div.id="prod-overlay";div.className="modal-overlay";div.style.zIndex=9999;
+    div.innerHTML=`<div class="modal">
+      <div class="modal-head"><div class="modal-title">${titre}</div><button class="modal-close" onclick="fermerFicheProduitDessus();retourCatalogue()">✕</button></div>
+      <div class="modal-body">${body}</div>
+      <div class="modal-footer"><button class="btn-cancel" onclick="fermerFicheProduitDessus();retourCatalogue()">Annuler</button>
+        <button class="btn-save" onclick="saveProduit(${id?`'${id}'`:"null"})">Enregistrer</button></div>
+    </div>`;
+    document.body.appendChild(div);
+    majMargeFiche();
+    return;
+  }
   const footer=`<button class="btn-cancel" onclick="closeModal();retourCatalogue()">Annuler</button>
     <button class="btn-save" onclick="saveProduit(${id?`'${id}'`:"null"})">Enregistrer</button>`;
-  showModal(p?"✏️ Modifier le produit":"📦 Nouveau produit",body,footer);
+  showModal(titre,body,footer);
   majMargeFiche();
 }
+function fermerFicheProduitDessus(){const o=document.getElementById("prod-overlay");if(o)o.remove();}
 function majMargeFiche(){
   const box=document.getElementById("pr-marge");
   if(!box)return;
@@ -506,8 +523,8 @@ function saveProduit(id){
   if(id){CATALOGUE=CATALOGUE.map(p=>p.id===id?obj:p);logActivity("Modification produit",obj.nom);}
   else{CATALOGUE.push(obj);logActivity("Création produit",obj.nom);}
   saveData();
-  closeModal();
   const wasPicker=_prodRetour==="picker";
+  if(wasPicker) fermerFicheProduitDessus(); else closeModal();
   retourCatalogue();
   if(!wasPicker) refreshCatalogueUI();
 }
