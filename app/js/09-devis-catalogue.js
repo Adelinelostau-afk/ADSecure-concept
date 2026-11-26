@@ -123,6 +123,7 @@ function toggleChantierField(prefix){
   wrap.style.display=clientEstPro(sel.value)?"block":"none";
 }
 function modalDevis(id){
+  window._devisProspect=id?null:(window._devisProspectNext||null); window._devisProspectNext=null;
   const d=id?DEVIS.find(x=>x.id===id):{id:"",clientId:selectedClientId||"",num:prochainNumero("DEV",DEVIS),date:TODAY,validite:addDays(TODAY,30),statut:"brouillon",tva:TVA_DEFAUT,notes:"",refChantier:"",lignes:[{desc:"",qte:1,pu:0}]};
   window._devisLignes=JSON.parse(JSON.stringify(d.lignes&&d.lignes.length?d.lignes:[{desc:"",qte:1,pu:0}]));
   showModal(id?"Modifier le devis":"Nouveau devis",`
@@ -577,8 +578,11 @@ function saveDevis(id){
     notes:document.getElementById("dv-notes").value.trim(),
     lignes
   };
-  if(id){DEVIS=DEVIS.map(d=>d.id===id?{...d,...obj}:d);logActivity("Modification devis",obj.num);}
-  else{DEVIS.push({...obj,id:uid()});logActivity("Création devis",obj.num);}
+  let dSauve;
+  if(id){DEVIS=DEVIS.map(d=>d.id===id?{...d,...obj}:d);dSauve=DEVIS.find(d=>d.id===id);logActivity("Modification devis",obj.num);}
+  else{dSauve={...obj,id:uid()};if(window._devisProspect)dSauve.prospectId=window._devisProspect;DEVIS.push(dSauve);logActivity("Création devis",obj.num);}
+  window._devisProspect=null;
+  if(dSauve&&dSauve.prospectId&&typeof pipeApresDevis==="function") pipeApresDevis(dSauve,!id);
   closeModal();renderPage();renderNav();
 }
 function delDevis(id){const d=DEVIS.find(x=>x.id===id);confirmDel("Supprimer ce devis ?",function(){DEVIS=DEVIS.filter(x=>x.id!==id);logActivity("Suppression devis",d?d.num:"");renderPage();});}

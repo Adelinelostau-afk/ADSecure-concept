@@ -23,6 +23,7 @@
 - 24/11/2026 : CGV jointes aux devis mises en production seules (00-cgv.js, 11-signature-envoi.js, 18-pages-reglages-demarrage.js recopiés ; app.html charge 00-cgv.js). Les autres écarts test/app (01-base, 05, 07, 17, style.css : charte beige…) restent en test, non validés.
 - 24/11/2026 : app.html + app/ = version de test (outils/publier.py) : charte beige #F3EDE1 validée (seuls écarts restants : couleur beige dans 01, 05, 07, 17, style.css). Test et production identiques.
 - 26/11/2026 : app.html + app/ = version de test (outils/publier.py), validé par Adeline sur iPad : fenêtres avec champs non fermées par un tap à côté, synchro des signatures sans réaffichage pendant une saisie (`saisieEnCours()`), session `gp_user` gardée dans localStorage (appli écran d'accueil iPad), fiche « Nouveau produit » ouverte par-dessus devis/facture/BC (`#prod-overlay`, ne jamais repasser par `showModal` depuis un document ouvert). Test et production identiques.
+- 26/11/2026 : app.html + app/ = version de test (outils/publier.py), validé par Adeline : thème propre à chaque utilisateur (documents aux couleurs de l'entreprise), pipeline complet (demandes du site, devis depuis un prospect, relances agenda/tableau de bord, historique, origine/motif, appel/WhatsApp, anciens rangés). Devis, facture, contrats pro/particulier et dossier de remise AD Secure comparés : identiques (aussi avec un thème perso). Formulaire du site passé en envoi direct.
 - La liste `FOURNISSEURS` est désormais enregistrée avec les données (avant : jamais sauvegardée, reconstituée au chargement depuis COMMANDES/FACFOURN).
 - Inscription publique pas encore ouverte : noindex d'inscription.html et bouton « Essai gratuit » de logiciel.html laissés en l'état (CGV/médiateur et passage Supabase Pro à faire d'abord).
 
@@ -52,7 +53,7 @@
 - Admin : bouton « Pour toute l'entreprise » (`thAppliquerEntreprise()`).
 
 ## Pipeline : demandes du site, relances, historique
-- Formulaire `contact.html` → fonction Edge `demande-contact` (verify_jwt false, code dans `supabase/functions/demande-contact/`, piège `site_web`, 5/IP/jour, e-mail à contact@) → table `demandes_contact` (RLS : lecture par le tenant, aucun droit anon). Envoi direct actif seulement avec `contact.html?test` tant que non validé (`CONTACT_DIRECT`), sinon ancien mailto.
+- Formulaire `contact.html` → fonction Edge `demande-contact` (verify_jwt false, code dans `supabase/functions/demande-contact/`, piège `site_web`, 5/IP/jour, e-mail à contact@) → table `demandes_contact` (RLS : lecture par le tenant, aucun droit anon). Envoi direct pour tous depuis le 26/11/2026 (`CONTACT_DIRECT=true`) ; `?test` n'affiche plus qu'un bandeau ; `envoyerMail()` (mailto) gardé en secours.
 - L'appli lit la table (`syncDemandesContact`, lecture seule, aussi en test) et crée des prospects « Contact initial » (`demandeId`, origine « Site internet ») ; ids déjà importés dans `TH.demandesImportees`.
 - Prospect : + `origine`, `motifPerte`, `historique:[{id,date,type,texte,par}]`, `demandeId`. Gagné/perdu depuis 30 j : rangé (`pipeEstArchive`, bouton « Anciens »).
 - Relance ↔ agenda : événement `id:"pr-"+prospectId`, type prospection, `prospectId` (`pipeSyncRelanceEvent`, `pipeSyncToutesRelances` au chargement, `pipeDepuisAgenda` depuis saveEvent/delEvent). Relances dues dans le tableau de bord (Alertes) et `alertCount()`.

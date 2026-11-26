@@ -211,12 +211,12 @@ function dbwHero(){
   return `<div class="db-hero" style="background:linear-gradient(135deg,${TH.sidebar} 0%,${TH.c1} 55%,${TH.c2} 100%)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative;z-index:1">
         <div>
-          <div style="font-size:10.5px;color:rgba(222,211,188,0.7);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;font-weight:600">${new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+          <div style="font-size:10.5px;color:rgba(243,237,225,0.7);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;font-weight:600">${new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           <div style="font-family:'Lora',Georgia,serif;font-size:26px;font-weight:700;letter-spacing:-0.01em">Bonjour${(typeof currentUser!=="undefined"&&currentUser&&currentUser.nom)?" "+currentUser.nom.split(" ")[0]:""} 👋</div>
-          <div style="font-size:13px;color:rgba(222,211,188,0.75);margin-top:5px">${facR.length>0||stAl.length>0?`${facR.length+stAl.length} point(s) à traiter.`:"Tout est en ordre aujourd'hui."}</div>
+          <div style="font-size:13px;color:rgba(243,237,225,0.75);margin-top:5px">${facR.length>0||stAl.length>0?`${facR.length+stAl.length} point(s) à traiter.`:"Tout est en ordre aujourd'hui."}</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:10px;color:rgba(222,211,188,0.6);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;font-weight:600">CA à encaisser</div>
+          <div style="font-size:10px;color:rgba(243,237,225,0.6);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;font-weight:600">CA à encaisser</div>
           <div style="font-family:'Lora',Georgia,serif;font-size:28px;font-weight:700">${fMoney(ca)}</div>
         </div>
       </div>
@@ -233,9 +233,12 @@ function dbwAlertes(){
   const stAl=STOCK.filter(s=>s.qte<s.seuil);
   const facR=FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard");
   const ctrAl=contratsAlertesL215();
-  if(!facR.length&&!stAl.length&&!ctrAl.length) return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">Rien à signaler</div></div></div><div style="padding:22px;text-align:center;font-size:13px;color:rgba(26,33,24,0.38)">Aucune alerte en cours 🎉</div></div>`;
-  return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">${facR.length+stAl.length+ctrAl.length} point(s) à traiter</div></div></div>
+  const prR=pipeRelancesDues();
+  if(!facR.length&&!stAl.length&&!ctrAl.length&&!prR.length) return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">Rien à signaler</div></div></div><div style="padding:22px;text-align:center;font-size:13px;color:rgba(26,33,24,0.38)">Aucune alerte en cours 🎉</div></div>`;
+  return `<div class="section-card"><div class="section-head"><div><div class="section-title">⚠️ Alertes</div><div class="section-sub">${facR.length+stAl.length+ctrAl.length+prR.length} point(s) à traiter</div></div></div>
     <div style="padding:12px 16px">
+      ${prR.slice(0,5).map(p=>{const r=p.date<getToday();return `<div class="alert-bar" style="background:${r?"#fef2f2":"#fffbeb"};border-color:${r?"#fca5a5":"#fcd34d"}" onclick="pipeDetail('${pipeEsc(p.id)}')"><span style="font-size:18px">🎯</span><div><div style="font-weight:700;font-size:13px;color:${r?"#7f1d1d":"#78350f"}">Relancer ${pipeEsc(p.name)}${p.company?" — "+pipeEsc(p.company):""}</div><div style="font-size:11.5px;color:${r?"#991b1b":"#b45309"}">${r?"En retard · prévue le ":"Aujourd'hui · "}${fDate(p.date)}${p.phone?" · "+pipeEsc(p.phone):""}</div></div></div>`;}).join("")}
+      ${prR.length>5?`<div style="font-size:11px;color:#b45309;margin:4px 0 8px;cursor:pointer" onclick="goTo('pipeline')">+ ${prR.length-5} autre(s) relance(s) prospect</div>`:""}
       ${ctrAl.slice(0,5).map(({c,info})=>{const r=info.etat==="retard";return `<div class="alert-bar" style="background:${r?"#fef2f2":"#fffbeb"};border-color:${r?"#fca5a5":"#fcd34d"}" onclick="openClientFiche('${c.id}')"><span style="font-size:18px">✉️</span><div><div style="font-weight:700;font-size:13px;color:${r?"#7f1d1d":"#78350f"}">Courrier de reconduction — ${ctrEsc(c.nom)}</div><div style="font-size:11px;color:${r?"#991b1b":"#b45309"}">${r?"Délai dépassé — à envoyer au plus vite":"À envoyer avant le "+fDate(info.fin)} →</div></div></div>`;}).join("")}
       ${ctrAl.length>5?`<div style="font-size:11px;color:#b45309;margin:4px 0 8px">+ ${ctrAl.length-5} autre(s) courrier(s) de reconduction</div>`:""}
       ${facR.length>0?`<div class="alert-bar" style="background:#fef2f2;border-color:#fca5a5" onclick="goTo('factures')"><span style="font-size:18px">⚠️</span><div><div style="font-weight:700;font-size:13px;color:#7f1d1d">${facR.length} facture(s) en retard</div><div style="font-size:11px;color:#991b1b">Voir les factures →</div></div></div>`:""}

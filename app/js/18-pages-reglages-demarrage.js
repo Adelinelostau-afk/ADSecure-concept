@@ -1,3 +1,9 @@
+// Documents et e-mails : toujours aux couleurs de l'entreprise, quel que soit le thème de l'utilisateur
+["factureDocHTML","devisDocHTML","cgvHTML","ajouterCgvPdf","riDocHTML","dossierRemiseHTML","genererBonCommandePDF","genererBCClientPDF",
+ "genererContratPDF","buildContratDocx","genererCourrierReconduction","imprimerCertificatSignature"].forEach(n=>{
+  if(typeof window[n]==="function") window[n]=avecCouleursEntreprise(window[n]);
+  else console.warn("Couleurs entreprise : fonction absente",n);
+});
 // ── Relance rapide ────────────────────────────────────────────────────────────
 function modalRelance(clientId){
   const c=CLIENTS.find(x=>x.id===clientId);
@@ -539,13 +545,13 @@ function sigSet(k,v){
   if(!TH.sigMail||typeof TH.sigMail!=="object"){const c=SigMail.cfg(TH);TH.sigMail={actif:true,nom:"",poste:"",societe:c.societe,tel1:c.tel1,tel2:"",email:c.email,site:c.site,adresse:c.adresse,logoUrl:"",slogan:""};}
   TH.sigMail[k]=v;saveData();
   const ap=document.getElementById("sig-apercu");
-  if(ap) ap.innerHTML=SigMail.cfg(TH).actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée : seuls le nom de l'entreprise et ses coordonnées figurent en texte simple.</div>`;
+  if(ap) ap.innerHTML=SigMail.cfg(TH).actif?SigMail.html(thAEnregistrer()):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée : seuls le nom de l'entreprise et ses coordonnées figurent en texte simple.</div>`;
 }
 // Signatures personnelles : chaque utilisateur signe les devis et factures qu'il envoie
 function sigUserSet(uid,k,v){
   TH.sigMailUsers=TH.sigMailUsers||{};TH.sigMailUsers[uid]=TH.sigMailUsers[uid]||{};
   TH.sigMailUsers[uid][k]=v;saveData();
-  const ap=document.getElementById("sig-ap-"+uid);if(ap)ap.innerHTML=SigMail.html(TH,uid);
+  const ap=document.getElementById("sig-ap-"+uid);if(ap)ap.innerHTML=SigMail.html(thAEnregistrer(),uid);
 }
 function renderSigUsers(){
   const L=(PROFILES&&PROFILES.length?PROFILES:(currentUser?[{id:currentUser.id,nom:currentUser.nom,poste:currentUser.poste,tel:currentUser.tel}]:[]));
@@ -556,7 +562,7 @@ function renderSigUsers(){
     ${L.map(p=>{const u=(TH.sigMailUsers||{})[p.id]||{};const f=(k,lbl,ph)=>`<div class="p-field" style="margin-bottom:8px"><label class="field-label">${lbl}</label><input value="${v(u[k])}" placeholder="${v(ph)}" oninput="sigUserSet('${p.id}','${k}',this.value)"/></div>`;
       return `<details style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;margin-bottom:8px"${u.nom?"":" open"}><summary style="cursor:pointer;font-weight:700;font-size:13px">${v(p.nom||"Utilisateur")}${p.id===(currentUser&&currentUser.id)?" (vous)":""}</summary>
         <div style="margin-top:10px">${f("nom","Nom affiché",p.nom||"")}${f("poste","Fonction",p.poste||"")}${f("tel1","Téléphone",p.tel||"")}${f("tel2","Téléphone 2","")}${f("email","E-mail",SigMail.cfg(TH).email)}
-        <div class="field-label" style="margin:6px 0 4px">Aperçu</div><div id="sig-ap-${p.id}" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 10px 10px;background:#fff;overflow-x:auto">${SigMail.html(TH,p.id)}</div></div></details>`;}).join("")}`;
+        <div class="field-label" style="margin:6px 0 4px">Aperçu</div><div id="sig-ap-${p.id}" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 10px 10px;background:#fff;overflow-x:auto">${SigMail.html(thAEnregistrer(),p.id)}</div></div></details>`;}).join("")}`;
 }
 function renderSigMailReglages(){
   const c=SigMail.cfg(TH);
@@ -576,7 +582,7 @@ function renderSigMailReglages(){
     ${f("logoUrl","Adresse web du logo","https://www.votre-entreprise.fr/logo.png","url")}
     <div style="font-size:11px;color:#94a3b8;margin:-6px 0 12px;line-height:1.4">Le logo doit être une image en ligne (lien https) : les messageries n'affichent pas les images intégrées.</div>
     <div class="field-label" style="margin-bottom:4px">Aperçu</div>
-    <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(TH):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>
+    <div id="sig-apercu" style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 12px;background:#fff;overflow-x:auto;margin-bottom:14px">${c.actif?SigMail.html(thAEnregistrer()):`<div style="padding:12px 0;color:#94a3b8;font-size:12px">Signature désactivée.</div>`}</div>
     ${c.actif?renderSigUsers():""}`;
 }
 function panelShell(icone,titre,corps,pied){
@@ -643,7 +649,9 @@ function renderCgvReglage(){
 }
 // 🎨 Apparence : thème, couleurs, police
 function renderThemePanel(){
+  const perso=TH_ENT&&TH_VIS.some(k=>TH[k]!==TH_ENT[k]);
   return panelShell("🎨","Apparence",`
+        <div class="info-box" style="margin-bottom:14px">👤 Ces réglages ne changent que <b>votre</b> affichage. Les autres utilisateurs, les devis, factures et contrats gardent les couleurs de l'entreprise.${perso?" <br/>Vous utilisez actuellement votre propre thème.":""}</div>
         <div style="margin-bottom:14px">
           <label class="field-label">Thèmes prédéfinis</label>
           <div class="preset-grid">${PRESETS.map((p,i)=>`<button class="preset-btn" onclick="applyPreset(${i})" style="background:${p.c1}11;border-color:${p.c1}33"><div class="preset-dots"><div class="preset-dot" style="background:${p.sb}"></div><div class="preset-dot" style="background:${p.c1}"></div><div class="preset-dot" style="background:${p.c2}"></div></div>${p.label}</button>`).join("")}</div>
@@ -666,7 +674,7 @@ function renderThemePanel(){
           <div style="color:${TH.c2};font-size:10px;letter-spacing:0.18em;text-transform:uppercase;margin-top:3px">${TH.sous}</div>
         </div>
 `,
-    `<button class="btn-reset" onclick="resetThemeColors()">↺ Couleurs d'origine</button><button class="btn-apply" onclick="closePanel()">Terminé ✓</button>`);
+    `<button class="btn-reset" onclick="resetThemeColors()">↺ Couleurs de l'entreprise</button>${hasRole("admin")&&perso?`<button class="btn-reset" onclick="thAppliquerEntreprise()">🏢 Pour toute l'entreprise</button>`:""}<button class="btn-apply" onclick="closePanel()">Terminé ✓</button>`);
 }
 // ✉️ E-mails : signature de l'entreprise + signatures personnelles
 function renderEmailsPanel(){
@@ -806,7 +814,7 @@ function viderDonnees(){
   DOCSHIST=[];CATALOGUE=[];TRANSMISSIONS=[];JOURNAL=[];INTERVENTIONS=[];RAPPRO={};FOURNISSEURS=[];
   CAISSE={mouvements:[],comptages:[]};pipeNextId=10;BANQUE_DATA=null;
   CAT_STOCK=JSON.parse(DEF_LISTES.CAT_STOCK);CAT_PRODUITS=JSON.parse(DEF_LISTES.CAT_PRODUITS);UNITES=JSON.parse(DEF_LISTES.UNITES);
-  TH=mergeTH({});RUBS=mergeRubs([]);
+  TH=mergeTH({});TH_ENT=null;RUBS=mergeRubs([]);
 }
 viderDonnees();
 try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}   // ancienne copie commune à tous les comptes

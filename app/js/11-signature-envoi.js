@@ -656,7 +656,7 @@ function modalEnvoiDoc(type,id){
         ${TH[T.cleModele]?`<button class="btn-sm" onclick="resetModeleDoc('${type}','${d.id}')">↺ Message d'origine</button>`:""}
       </div></div>
     ${SigMail.cfg(TH).actif?`<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:2px 0 4px">Signature ajoutée sous le message</div>
-      <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(TH,currentUser&&currentUser.id)}</div>`:""}
+      <div style="border:1.5px dashed #e2e8f0;border-radius:10px;padding:2px 12px 10px;margin-bottom:12px;background:#fff;overflow-x:auto">${SigMail.html(thAEnregistrer(),currentUser&&currentUser.id)}</div>`:""}
     <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin:4px 0 10px">📎 <b>${esc(fichier)}</b> joint automatiquement
       <button class="btn-sm" onclick="DOC_ENVOI['${type}'].apercu('${d.id}')" style="margin-left:auto">👁️ Aperçu</button></div>
     ${type==="devis"&&!d.signatureElec&&!["refuse","transforme"].includes(d.statut)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ev-signer" checked style="width:18px;height:18px;accent-color:${TH.c1}"/> ✍️ Ajouter un lien pour signer le devis en ligne</label>`:""}
