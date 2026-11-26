@@ -46,6 +46,18 @@
 - Prospect : `{id:"p"+uid(),name,company,email,phone,amount,temp,stage,date(relance),notes,creeLe,etapeLe,clientId?}`. Tout changement d'étape passe par `pipeChangerEtape()` ; passage en « gagné » → proposition de créer la fiche client (`pipeCreerClient`, lien `clientId` / `prospectId`). Textes saisis toujours échappés (`pipeEsc`).
 - Statistiques : CA facturé, clients, marge en HT ; encaissements et graphique mensuel en TTC. Aucun objectif inventé : `getObjectif()` = 0 tant qu'Adeline n'en a pas saisi (bouton « Définir mes objectifs »).
 
+## Thème par utilisateur
+- `TH` en mémoire = affichage de l'utilisateur connecté. Couleurs de l'entreprise dans `TH_ENT` (clés `TH_VIS`) : seules elles sont enregistrées dans `TH` (`thAEnregistrer()` dans `getDataObject`), les choix de chacun dans `TH.themesUsers[userId]`. Chargement par `thCharger()` (jamais `TH=mergeTH(...)` directement sur des données).
+- Documents et e-mails aux couleurs de l'entreprise : fonctions listées en tête de `18-pages-reglages-demarrage.js`, enveloppées par `avecCouleursEntreprise()`. Toute nouvelle fonction qui produit un document doit y être ajoutée. Aperçus de signature : `SigMail.html(thAEnregistrer(),…)`.
+- Admin : bouton « Pour toute l'entreprise » (`thAppliquerEntreprise()`).
+
+## Pipeline : demandes du site, relances, historique
+- Formulaire `contact.html` → fonction Edge `demande-contact` (verify_jwt false, code dans `supabase/functions/demande-contact/`, piège `site_web`, 5/IP/jour, e-mail à contact@) → table `demandes_contact` (RLS : lecture par le tenant, aucun droit anon). Envoi direct actif seulement avec `contact.html?test` tant que non validé (`CONTACT_DIRECT`), sinon ancien mailto.
+- L'appli lit la table (`syncDemandesContact`, lecture seule, aussi en test) et crée des prospects « Contact initial » (`demandeId`, origine « Site internet ») ; ids déjà importés dans `TH.demandesImportees`.
+- Prospect : + `origine`, `motifPerte`, `historique:[{id,date,type,texte,par}]`, `demandeId`. Gagné/perdu depuis 30 j : rangé (`pipeEstArchive`, bouton « Anciens »).
+- Relance ↔ agenda : événement `id:"pr-"+prospectId`, type prospection, `prospectId` (`pipeSyncRelanceEvent`, `pipeSyncToutesRelances` au chargement, `pipeDepuisAgenda` depuis saveEvent/delEvent). Relances dues dans le tableau de bord (Alertes) et `alertCount()`.
+- Devis depuis un prospect : `pipeFaireDevis` (crée la fiche client si besoin) ; devis lié `prospectId` ; `pipeApresDevis` = montant HT + étape Proposition.
+
 ## Agenda
 - Événement : `{id,type,titre,client,clientId,adresse,date,heure,fin,assignes:[userId],notes}` (+ `contratId`, `visiteNum`, `riId` pour les visites). `evFin(e)` = fin ou début + 1 h (anciens événements).
 - Équipe : `TH.equipe` [{id,nom,couleur}] recopiée depuis `profiles` par un admin à la connexion (`syncEquipe`) — les utilisateurs simples ne peuvent pas lire `profiles` (RLS).

@@ -282,10 +282,10 @@ function saveEvent(id){
     date:g("e-date").value||getToday(),heure,fin,
     assignes:Array.from(document.querySelectorAll(".e-assigne:checked")).map(x=>x.value),
     notes:g("e-notes").value};
-  if(id){EVENTS=EVENTS.map(e=>e.id===id?{...e,...obj}:e);}else{EVENTS.push({...obj,id:uid()});}
+  if(id){EVENTS=EVENTS.map(e=>e.id===id?{...e,...obj}:e);pipeDepuisAgenda(EVENTS.find(e=>e.id===id));}else{EVENTS.push({...obj,id:uid()});}
   closeModal();renderPage();
 }
-function delEvent(id){if(!confirm("Supprimer cet événement ?"))return;EVENTS=EVENTS.filter(e=>e.id!==id);closeModal();renderPage();}
+function delEvent(id){if(!confirm("Supprimer cet événement ?"))return;pipeDepuisAgenda(EVENTS.find(e=>e.id===id),true);EVENTS=EVENTS.filter(e=>e.id!==id);closeModal();renderPage();}
 
 // ── Itinéraire ──
 function agItineraire(id){

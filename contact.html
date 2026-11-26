@@ -137,7 +137,9 @@
               <label>Votre message</label>
               <textarea id="f-msg" required placeholder="Décrivez-nous votre projet ou vos besoins..."></textarea>
             </div>
-            <button type="submit" class="form-submit">Envoyer ma demande</button>
+            <input type="text" id="f-site" name="site_web" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px" aria-hidden="true"/>
+            <div id="form-err" style="display:none;color:#b91c1c;font-size:14px;margin:0 0 10px"></div>
+            <button type="submit" class="form-submit" id="f-btn">Envoyer ma demande</button>
             <p style="font-size:13px;opacity:.7;margin-top:10px">Votre messagerie s'ouvre avec la demande pré-remplie. Vos informations servent uniquement à vous répondre (<a href="politique-confidentialite.html">confidentialité</a>).</p>
           </form>
           <div class="form-success" id="form-success">
@@ -241,8 +243,36 @@ function toggleFaq(el){
   document.querySelectorAll('.faq-item').forEach(i=>i.classList.remove('open'));
   if(!wasOpen) item.classList.add('open');
 }
+// Envoi direct (la demande arrive dans le pipeline de l'appli). Actif avec ?test tant que ce n'est pas validé.
+var CONTACT_DIRECT=/[?&]test\b/.test(location.search);
+var CONTACT_URL='https://tcszogqlvqpxrtdirkto.supabase.co/functions/v1/demande-contact';
 function handleSubmit(e){
   e.preventDefault();
+  if(CONTACT_DIRECT) return envoyerDirect();
+  return envoyerMail();
+}
+function envoyerDirect(){
+  var v=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
+  var btn=document.getElementById('f-btn'),err=document.getElementById('form-err');
+  btn.disabled=true;btn.textContent='Envoi…';err.style.display='none';
+  fetch(CONTACT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prenom:v('f-prenom'),nom:v('f-nom'),email:v('f-email'),tel:v('f-tel'),type:v('f-type'),message:v('f-msg'),site_web:v('f-site')})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(x){
+      if(!x.ok||!x.j||!x.j.ok) throw new Error((x.j&&x.j.error)||'Envoi impossible');
+      document.getElementById('contact-form').style.display='none';
+      var s=document.getElementById('form-success');
+      s.querySelector('h3').textContent='Demande envoyée';
+      s.querySelector('p').textContent='Merci ! Nous avons bien reçu votre demande et nous vous recontactons très vite. Pour une urgence : 0696 43 95 84.';
+      s.classList.add('show');
+    })
+    .catch(function(ex){
+      btn.disabled=false;btn.textContent='Envoyer ma demande';
+      err.textContent=(ex&&ex.message&&ex.message!=='Failed to fetch'?ex.message+' ':'')+'Vous pouvez aussi nous écrire à contact@adsecureconcept.fr ou appeler le 0696 43 95 84.';
+      err.style.display='block';
+    });
+  return false;
+}
+function envoyerMail(){
   var v=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
   var nom=(v('f-prenom')+' '+v('f-nom')).trim();
   var corps='Nom : '+nom+'\nEmail : '+v('f-email')+'\nTéléphone : '+(v('f-tel')||'non précisé')+'\nVous êtes : '+v('f-type')+'\n\n'+v('f-msg');

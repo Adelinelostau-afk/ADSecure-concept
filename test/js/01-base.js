@@ -517,7 +517,50 @@ function mergeTH(saved){
   if(t.sigMail&&t.sigMail.slogan==="Vidéosurveillance · IA · Domotique") t.sigMail={...t.sigMail,slogan:"Vidéosurveillance · IA"};
   return t;
 }
-function resetThemeColors(){const d=mergeTH({nom:TH.nom});["c1","c2","sidebar","bg","card","txt","sand","police","logoF"].forEach(k=>TH[k]=d[k]);applyTheme();renderNav();renderPanel();}
+// ── Thème propre à chaque utilisateur ───────────────────────────────────────
+// TH contient en mémoire l'affichage de l'utilisateur connecté. Les couleurs de l'ENTREPRISE (documents,
+// e-mails, nouveaux utilisateurs) sont gardées à part dans TH_ENT et sont les seules enregistrées dans TH ;
+// les choix de chacun vont dans TH.themesUsers[id].
+const TH_VIS=["c1","c2","sidebar","bg","card","txt","sand","police","logoF"];
+let TH_ENT=null;
+function thPick(o){const r={};TH_VIS.forEach(k=>{if(o&&o[k]!=null)r[k]=o[k];});return r;}
+function thCharger(saved){
+  TH=mergeTH(saved);
+  TH_ENT=thPick(TH);
+  const u=currentUser&&currentUser.id&&TH.themesUsers&&TH.themesUsers[currentUser.id];
+  if(u) Object.assign(TH,thPick(u));
+}
+// Ce qui est enregistré : couleurs de l'entreprise + choix de l'utilisateur connecté dans themesUsers
+function thAEnregistrer(){
+  if(!TH_ENT) return TH;
+  const t={...TH,...TH_ENT};
+  const users={...(TH.themesUsers||{})};
+  if(currentUser&&currentUser.id){
+    const mien=thPick(TH);
+    if(TH_VIS.some(k=>mien[k]!==TH_ENT[k])) users[currentUser.id]=mien; else delete users[currentUser.id];
+  }
+  t.themesUsers=users;
+  return t;
+}
+// Exécute fn avec les couleurs de l'entreprise (documents), puis remet celles de l'utilisateur
+function avecCouleursEntreprise(fn){
+  return function(){
+    if(!TH_ENT) return fn.apply(this,arguments);
+    const mien=thPick(TH); Object.assign(TH,TH_ENT);
+    let res;
+    try{ res=fn.apply(this,arguments); }
+    catch(e){ Object.assign(TH,mien); throw e; }
+    if(res&&typeof res.then==="function") return res.finally(()=>Object.assign(TH,mien));
+    Object.assign(TH,mien); return res;
+  };
+}
+// Admin : les couleurs affichées deviennent celles de l'entreprise
+function thAppliquerEntreprise(){
+  if(!hasRole("admin")) return;
+  if(!confirm("Utiliser ces couleurs pour toute l'entreprise ?\n\nElles serviront pour les devis, factures, contrats et e-mails, et pour les utilisateurs qui n'ont pas choisi leur propre thème.")) return;
+  TH_ENT=thPick(TH); saveData(); renderPanel();
+}
+function resetThemeColors(){const d=mergeTH({nom:TH.nom});const src=TH_ENT||d;TH_VIS.forEach(k=>TH[k]=src[k]!=null?src[k]:d[k]);applyTheme();renderNav();renderPanel();}
 function thLogo(){return TH.logo||(isADS(TH)?"logo.png":"");}
 const DEF_RUBS=JSON.parse(JSON.stringify(RUBS));
 
@@ -628,7 +671,7 @@ function chargerFournisseurs(d){
 function getDataObject(){
   return {
     CLIENTS, EVENTS, STOCK, COMMANDES, FACTURES, FACFOURN, TACHES, PROSPECTS, DEVIS, BCCLIENTS, DOCSHIST, CATALOGUE, CAT_PRODUITS, CAT_STOCK, UNITES, TRANSMISSIONS,
-    TH, RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS, RAPPRO, FOURNISSEURS
+    TH:thAEnregistrer(), RUBS, pipeNextId, JOURNAL, CAISSE, INTERVENTIONS, RAPPRO, FOURNISSEURS
   };
 }
 function applyDataObject(d){
@@ -652,7 +695,7 @@ function applyDataObject(d){
   if(d.CAT_STOCK && Array.isArray(d.CAT_STOCK) && d.CAT_STOCK.length) CAT_STOCK=d.CAT_STOCK;
   if(d.CAT_PRODUITS && Array.isArray(d.CAT_PRODUITS) && d.CAT_PRODUITS.length) CAT_PRODUITS=d.CAT_PRODUITS;
   if(d.UNITES && Array.isArray(d.UNITES) && d.UNITES.length) UNITES=d.UNITES;
-  if(d.TH) TH=mergeTH(d.TH);
+  if(d.TH) thCharger(d.TH);
   if(d.RUBS) RUBS=mergeRubs(d.RUBS);
   if(typeof d.pipeNextId==="number") pipeNextId=d.pipeNextId;
   if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
@@ -730,6 +773,7 @@ async function syncPull(){
     if(rows && rows.data){
       applyDataObject(rows.data);
       CLOUD_OK=true; CLOUD_TENANT=tenantVise;
+      setTimeout(()=>{if(typeof pipeSyncToutesRelances==="function")pipeSyncToutesRelances();if(typeof syncDemandesContact==="function")syncDemandesContact(true);},800);
       await syncRelancesLog();
       saveDataLocal();
       setSyncBadge("ok");
@@ -884,7 +928,7 @@ function loadData(){
     if(d.CAT_STOCK && Array.isArray(d.CAT_STOCK) && d.CAT_STOCK.length) CAT_STOCK=d.CAT_STOCK;
     if(d.CAT_PRODUITS && Array.isArray(d.CAT_PRODUITS) && d.CAT_PRODUITS.length) CAT_PRODUITS=d.CAT_PRODUITS;
     if(d.UNITES && Array.isArray(d.UNITES) && d.UNITES.length) UNITES=d.UNITES;
-    if(d.TH) TH=mergeTH(d.TH);
+    if(d.TH) thCharger(d.TH);
     if(d.RUBS) RUBS=mergeRubs(d.RUBS);
     if(typeof d.pipeNextId==="number") pipeNextId=d.pipeNextId;
     if(d.JOURNAL && Array.isArray(d.JOURNAL)) JOURNAL=d.JOURNAL;
@@ -984,7 +1028,7 @@ let UNITES=["unité","forfait","heure","jour","m","m²","ml (mètre linéaire)",
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
 function badge(label,bg,color){return `<span class="badge" style="background:${bg};color:${color}">${label}</span>`;}
-function alertCount(){return FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length;}
+function alertCount(){return FACTURES.filter(f=>facEnCompta(f)&&facStatutReel(f)==="retard").length+STOCK.filter(s=>s.qte<s.seuil).length+TACHES.filter(t=>!t.done&&t.prio==="haute").length+PROSPECTS.filter(p=>p.date&&p.date<=getToday()&&p.stage!=="gagne"&&p.stage!=="perdu").length;}
 function activeRubs(){return [...RUBS].sort((a,b)=>a.ordre-b.ordre).filter(r=>r.actif);}
 function kpi(label,value,color,small){return`<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value${small?" small":""}" style="color:${color||TH.c1}">${value}</div></div>`;}
 function weekStart(offset){const d=new Date();const day=d.getDay()===0?6:d.getDay()-1;d.setDate(d.getDate()-day+(offset||0)*7);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
