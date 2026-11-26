@@ -310,7 +310,7 @@ async function saveUser(id){
   logActivity("Modification utilisateur",`Profil de ${nom} mis à jour`);
   if(isMe){
     currentUser={...currentUser,nom,poste:patch.poste,tel:patch.tel,avatar:patch.avatar};
-    sessionStorage.setItem("gp_user",JSON.stringify(currentUser));
+    localStorage.setItem("gp_user",JSON.stringify(currentUser));
   }
   closeModal();
   await loadProfiles();
@@ -815,7 +815,7 @@ appliquerMetier();
 // Vérifier la session Supabase Auth, puis synchroniser (scopé au tenant) avant d'afficher
 async function bootApp(){
   if(AD_TEST){ const l=document.getElementById("lien-essai"); if(l) l.href="inscription.html?test"; }
-  if(AUTH_LIEN.type==="invite"||AUTH_LIEN.type==="recovery"){ sessionStorage.removeItem("gp_user"); await afficherChoixMdp(); return; }
+  if(AUTH_LIEN.type==="invite"||AUTH_LIEN.type==="recovery"){ localStorage.removeItem("gp_user");sessionStorage.removeItem("gp_user"); await afficherChoixMdp(); return; }
   if(AUTH_LIEN.mdpOk||AUTH_LIEN.erreur){
     history.replaceState(null,"",location.pathname);
     if(AUTH_LIEN.email) document.getElementById("login-input").value=AUTH_LIEN.email;
@@ -830,7 +830,7 @@ async function bootApp(){
     if(!sessionData || !sessionData.session){
       // Session expirée/invalide : retour à l'écran de connexion
       isLoggedIn=false;currentUser=null;CURRENT_TENANT=null;DBWIDGETS=[];dbEditMode=false;
-      sessionStorage.removeItem("gp_user");
+      localStorage.removeItem("gp_user");sessionStorage.removeItem("gp_user");
       document.getElementById("login-screen").style.display="flex";
       document.getElementById("app-screen").style.display="none";
       return;
